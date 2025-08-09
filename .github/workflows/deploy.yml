@@ -1,0 +1,175 @@
+name: Deploy Services
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [staging]
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: us-central1
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Run tests for Gateway
+        run: |
+          cd services/gateway
+          pip install -r requirements.txt
+          pip install pytest httpx
+          # Add tests here when available
+          echo "Gateway tests would run here"
+      
+      - name: Run tests for API
+        run: |
+          cd services/api
+          pip install -r requirements.txt
+          pip install pytest httpx
+          # Add tests here when available
+          echo "API tests would run here"
+      
+      - name: Run tests for AI
+        run: |
+          cd services/ai
+          pip install -r requirements.txt
+          pip install pytest httpx
+          # Add tests here when available
+          echo "AI tests would run here"
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "service_suffix=" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "service_suffix=-staging" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+      
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+      
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker
+      
+      - name: Build and Deploy Gateway
+        run: |
+          SERVICE_NAME="${{ secrets.GCP_PROJECT_ID }}-gateway${{ steps.env.outputs.service_suffix }}"
+          IMAGE_URL="gcr.io/${{ secrets.GCP_PROJECT_ID }}/gateway:${{ github.sha }}"
+          
+          # Build and push Docker image
+          docker build -t $IMAGE_URL ./services/gateway
+          docker push $IMAGE_URL
+          
+          # Deploy to Cloud Run
+          gcloud run deploy $SERVICE_NAME \
+            --image=$IMAGE_URL \
+            --region=${{ env.GCP_REGION }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --port=8080 \
+            --memory=1Gi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=10 \
+            --set-env-vars="ENVIRONMENT=${{ steps.env.outputs.environment }}" \
+            --set-env-vars="GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}" \
+            --set-env-vars="CLERK_JWKS_URL=${{ secrets.CLERK_JWKS_URL }}" \
+            --set-env-vars="API_SERVICE_URL=https://${{ secrets.GCP_PROJECT_ID }}-api${{ steps.env.outputs.service_suffix }}-${{ env.GCP_REGION }}.a.run.app" \
+            --set-env-vars="AI_SERVICE_URL=https://${{ secrets.GCP_PROJECT_ID }}-ai${{ steps.env.outputs.service_suffix }}-${{ env.GCP_REGION }}.a.run.app"
+          
+          echo "Gateway deployed: https://$SERVICE_NAME-${{ env.GCP_REGION }}.a.run.app"
+      
+      - name: Build and Deploy API
+        run: |
+          SERVICE_NAME="${{ secrets.GCP_PROJECT_ID }}-api${{ steps.env.outputs.service_suffix }}"
+          IMAGE_URL="gcr.io/${{ secrets.GCP_PROJECT_ID }}/api:${{ github.sha }}"
+          
+          # Build and push Docker image
+          docker build -t $IMAGE_URL ./services/api
+          docker push $IMAGE_URL
+          
+          # Deploy to Cloud Run
+          gcloud run deploy $SERVICE_NAME \
+            --image=$IMAGE_URL \
+            --region=${{ env.GCP_REGION }} \
+            --platform=managed \
+            --no-allow-unauthenticated \
+            --port=8081 \
+            --memory=2Gi \
+            --cpu=2 \
+            --min-instances=0 \
+            --max-instances=5 \
+            --set-env-vars="ENVIRONMENT=${{ steps.env.outputs.environment }}" \
+            --set-env-vars="GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}" \
+            --set-env-vars="STORAGE_BUCKET=${{ secrets.GCP_PROJECT_ID }}-uploads"
+          
+          echo "API deployed: https://$SERVICE_NAME-${{ env.GCP_REGION }}.a.run.app"
+      
+      - name: Build and Deploy AI
+        run: |
+          SERVICE_NAME="${{ secrets.GCP_PROJECT_ID }}-ai${{ steps.env.outputs.service_suffix }}"
+          IMAGE_URL="gcr.io/${{ secrets.GCP_PROJECT_ID }}/ai:${{ github.sha }}"
+          
+          # Build and push Docker image
+          docker build -t $IMAGE_URL ./services/ai
+          docker push $IMAGE_URL
+          
+          # Deploy to Cloud Run with secrets
+          gcloud run deploy $SERVICE_NAME \
+            --image=$IMAGE_URL \
+            --region=${{ env.GCP_REGION }} \
+            --platform=managed \
+            --no-allow-unauthenticated \
+            --port=8082 \
+            --memory=2Gi \
+            --cpu=2 \
+            --min-instances=0 \
+            --max-instances=3 \
+            --set-env-vars="ENVIRONMENT=${{ steps.env.outputs.environment }}" \
+            --set-env-vars="GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}" \
+            --set-env-vars="OPENAI_MODEL=gpt-4-turbo-preview" \
+            --set-secrets="OPENAI_API_KEY=openai-api-key:latest" \
+            --set-secrets="LANGFUSE_SECRET_KEY=langfuse-secret-key:latest" \
+            --set-secrets="LANGFUSE_PUBLIC_KEY=langfuse-public-key:latest" \
+            --set-secrets="LANGFUSE_HOST=langfuse-host:latest"
+          
+          echo "AI deployed: https://$SERVICE_NAME-${{ env.GCP_REGION }}.a.run.app"
+      
+      - name: Output Service URLs
+        run: |
+          echo "🚀 Deployment Complete!"
+          echo "Environment: ${{ steps.env.outputs.environment }}"
+          echo ""
+          echo "Service URLs:"
+          echo "Gateway: https://${{ secrets.GCP_PROJECT_ID }}-gateway${{ steps.env.outputs.service_suffix }}-${{ env.GCP_REGION }}.a.run.app"
+          echo "API: https://${{ secrets.GCP_PROJECT_ID }}-api${{ steps.env.outputs.service_suffix }}-${{ env.GCP_REGION }}.a.run.app"
+          echo "AI: https://${{ secrets.GCP_PROJECT_ID }}-ai${{ steps.env.outputs.service_suffix }}-${{ env.GCP_REGION }}.a.run.app"

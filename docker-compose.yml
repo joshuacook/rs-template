@@ -1,0 +1,44 @@
+services:
+  gateway:
+    build: ./services/gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - ENVIRONMENT=development
+      - GCP_PROJECT_ID=local-dev
+      - API_SERVICE_URL=http://api:8081
+      - AI_SERVICE_URL=http://ai:8082
+    depends_on:
+      - api
+      - ai
+    networks:
+      - app-network
+
+  api:
+    build: ./services/api
+    ports:
+      - "8081:8081"
+    environment:
+      - ENVIRONMENT=development
+      - GCP_PROJECT_ID=local-dev
+      - STORAGE_BUCKET=local-uploads
+    networks:
+      - app-network
+
+  ai:
+    build: ./services/ai
+    ports:
+      - "8082:8082"
+    environment:
+      - ENVIRONMENT=development
+      - GCP_PROJECT_ID=local-dev
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_HOST=${LANGFUSE_HOST}
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
