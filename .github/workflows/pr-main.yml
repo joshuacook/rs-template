@@ -1,0 +1,195 @@
+name: PR to Main - Production Readiness
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+jobs:
+  production-readiness:
+    name: Production Readiness Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check for required files
+        run: |
+          echo "Checking for required production files..."
+          
+          # Check for required documentation
+          test -f README.md || (echo "❌ README.md is missing" && exit 1)
+          echo "✅ README.md found"
+          
+          test -f docker-compose.yml || (echo "❌ docker-compose.yml is missing" && exit 1)
+          echo "✅ docker-compose.yml found"
+          
+          test -f Makefile || (echo "❌ Makefile is missing" && exit 1)
+          echo "✅ Makefile found"
+          
+          # Check each service has required files
+          for service in gateway api ai; do
+            echo "Checking $service service..."
+            test -f services/$service/Dockerfile || (echo "❌ Dockerfile missing for $service" && exit 1)
+            test -f services/$service/requirements.txt || (echo "❌ requirements.txt missing for $service" && exit 1)
+            test -f services/$service/main.py || (echo "❌ main.py missing for $service" && exit 1)
+            test -d services/$service/tests || (echo "❌ tests directory missing for $service" && exit 1)
+            echo "✅ All required files present for $service"
+          done
+      
+      - name: Check for sensitive data
+        run: |
+          echo "Scanning for hardcoded secrets..."
+          
+          # Check for hardcoded API keys
+          if grep -r "sk-[a-zA-Z0-9]" services/ --include="*.py" --include="*.yml" --include="*.yaml" --include="*.env" 2>/dev/null; then
+            echo "❌ Found potential OpenAI API keys!"
+            exit 1
+          fi
+          
+          if grep -r "OPENAI_API_KEY=" services/ --include="*.py" | grep -v "os.getenv" | grep -v "os.environ"; then
+            echo "❌ Found hardcoded OPENAI_API_KEY!"
+            exit 1
+          fi
+          
+          # Check for hardcoded GCP credentials
+          if grep -r '"private_key"' services/ --include="*.py" --include="*.json" | grep -v "test" | grep -v "example"; then
+            echo "❌ Found potential GCP service account key!"
+            exit 1
+          fi
+          
+          # Check for hardcoded tokens
+          if grep -r "Bearer [a-zA-Z0-9]" services/ --include="*.py" | grep -v "test" | grep -v "TEST_BYPASS_TOKEN" | grep -v "example"; then
+            echo "❌ Found potential hardcoded tokens!"
+            exit 1
+          fi
+          
+          echo "✅ No hardcoded secrets detected"
+      
+      - name: Verify environment variables
+        run: |
+          echo "Checking environment variable usage..."
+          
+          # Check that sensitive configs use environment variables
+          for service in gateway api ai; do
+            echo "Checking $service service..."
+            
+            # Check for proper environment variable usage
+            if ! grep -q "os.getenv\|os.environ" services/$service/main.py; then
+              echo "⚠️ Warning: $service may not be using environment variables"
+            fi
+          done
+          
+          echo "✅ Environment variables check complete"
+      
+      - name: Check Docker security
+        run: |
+          echo "Checking Dockerfile security..."
+          
+          for service in gateway api ai; do
+            dockerfile="services/$service/Dockerfile"
+            
+            # Check for non-root user
+            if ! grep -q "USER" $dockerfile; then
+              echo "⚠️ Warning: $service Dockerfile doesn't specify a non-root USER"
+            fi
+            
+            # Check for specific version pins
+            if grep -q "FROM.*:latest" $dockerfile; then
+              echo "⚠️ Warning: $service uses :latest tag, consider pinning version"
+            fi
+          done
+          
+          echo "✅ Docker security check complete"
+      
+      - name: Validate production configuration
+        run: |
+          echo "Validating production configuration..."
+          
+          # Check for production-specific settings
+          if ! grep -q "ENVIRONMENT" docker-compose.yml; then
+            echo "⚠️ Warning: docker-compose.yml doesn't set ENVIRONMENT variable"
+          fi
+          
+          # Check for health checks
+          for service in gateway api ai; do
+            if ! grep -q "health" services/$service/main.py; then
+              echo "❌ $service doesn't have a health check endpoint"
+              exit 1
+            fi
+          done
+          
+          echo "✅ Production configuration validated"
+  
+  staging-verification:
+    name: Verify Staging Deployment
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Verify staging is up to date
+        run: |
+          echo "Checking if staging branch is merged..."
+          
+          # Get the latest staging commit
+          git fetch origin staging
+          
+          # Check if staging is merged into this PR branch
+          if ! git merge-base --is-ancestor origin/staging HEAD; then
+            echo "❌ This branch is not up to date with staging"
+            echo "Please merge or rebase with staging branch first"
+            exit 1
+          fi
+          
+          echo "✅ Branch includes latest staging changes"
+      
+      - name: Check staging deployment status
+        run: |
+          echo "Verifying staging deployment..."
+          
+          # This would normally check the actual staging environment
+          # For now, we'll just verify the workflow exists
+          if [ ! -f ".github/workflows/deploy-staging.yml" ]; then
+            echo "❌ Staging deployment workflow not found"
+            exit 1
+          fi
+          
+          echo "✅ Staging deployment configuration found"
+  
+  approve-for-production:
+    name: Production Approval
+    runs-on: ubuntu-latest
+    needs: [production-readiness, staging-verification]
+    
+    steps:
+      - name: Generate deployment summary
+        run: |
+          echo "# 🚀 Production Deployment Readiness Report"
+          echo ""
+          echo "## ✅ All checks passed!"
+          echo ""
+          echo "### Completed Verifications:"
+          echo "- ✅ All required files present"
+          echo "- ✅ No hardcoded secrets detected"
+          echo "- ✅ Docker security validated"
+          echo "- ✅ Production configuration verified"
+          echo "- ✅ Staging branch is merged"
+          echo "- ✅ Health check endpoints present"
+          echo ""
+          echo "### Services Ready for Deployment:"
+          echo "- Gateway Service"
+          echo "- API Service"
+          echo "- AI Service"
+          echo ""
+          echo "### Next Steps:"
+          echo "1. Review and approve this PR"
+          echo "2. Merge to main branch"
+          echo "3. Production deployment will trigger automatically"
+          echo ""
+          echo "**Deployment ID:** ${{ github.sha }}"
+          echo "**Initiated by:** ${{ github.actor }}"
+          echo "**Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")"

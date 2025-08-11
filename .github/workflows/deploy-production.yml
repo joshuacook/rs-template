@@ -1,0 +1,185 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'services/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/deploy-production.yml'
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: us-central1
+  REGISTRY: gcr.io
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+      
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+      
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker
+      
+      - name: Build and push Gateway image
+        run: |
+          docker build -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/services/gateway:latest \
+            services/gateway
+          docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:latest
+      
+      - name: Build and push API image
+        run: |
+          docker build -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/services/api:latest \
+            services/api
+          docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:latest
+      
+      - name: Build and push AI image
+        run: |
+          docker build -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/ai:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/services/ai:latest \
+            services/ai
+          docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/ai:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/ai:latest
+      
+      - name: Deploy to Cloud Run
+        run: |
+          # Deploy Gateway
+          gcloud run deploy ${{ env.GCP_PROJECT_ID }}-production-gateway \
+            --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:${{ github.sha }} \
+            --platform managed \
+            --region ${{ env.GCP_REGION }} \
+            --port 8080 \
+            --allow-unauthenticated \
+            --min-instances 1 \
+            --max-instances 100 \
+            --cpu 1 \
+            --memory 512Mi \
+            --set-env-vars="ENVIRONMENT=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }}" \
+            --set-secrets="TEST_BYPASS_TOKEN=test-bypass-token:latest"
+          
+          # Deploy API
+          gcloud run deploy ${{ env.GCP_PROJECT_ID }}-production-api \
+            --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:${{ github.sha }} \
+            --platform managed \
+            --region ${{ env.GCP_REGION }} \
+            --port 8081 \
+            --no-allow-unauthenticated \
+            --min-instances 1 \
+            --max-instances 100 \
+            --cpu 2 \
+            --memory 1Gi \
+            --set-env-vars="ENVIRONMENT=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},STORAGE_BUCKET=${{ env.GCP_PROJECT_ID }}-uploads"
+          
+          # Deploy AI
+          gcloud run deploy ${{ env.GCP_PROJECT_ID }}-production-ai \
+            --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/ai:${{ github.sha }} \
+            --platform managed \
+            --region ${{ env.GCP_REGION }} \
+            --port 8082 \
+            --no-allow-unauthenticated \
+            --min-instances 1 \
+            --max-instances 50 \
+            --cpu 1 \
+            --memory 1Gi \
+            --set-env-vars="ENVIRONMENT=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},OPENAI_MODEL=gpt-5-mini" \
+            --set-secrets="OPENAI_API_KEY=openai-api-key:latest,LANGFUSE_SECRET_KEY=langfuse-secret-key:latest,LANGFUSE_PUBLIC_KEY=langfuse-public-key:latest"
+      
+      - name: Verify deployment
+        run: |
+          echo "Waiting for services to stabilize..."
+          sleep 30
+          
+          # Check Gateway health
+          GATEWAY_URL=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-production-gateway --region ${{ env.GCP_REGION }} --format 'value(status.url)')
+          
+          if curl -f $GATEWAY_URL/health; then
+            echo "✅ Gateway is healthy"
+          else
+            echo "❌ Gateway health check failed"
+            exit 1
+          fi
+      
+      - name: Create deployment record
+        run: |
+          echo "Deployment completed successfully!"
+          echo "Deployment ID: ${{ github.sha }}"
+          echo "Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+          echo "Deployed by: ${{ github.actor }}"
+          
+          # Tag the deployment
+          git tag -a "production-$(date +%Y%m%d-%H%M%S)" -m "Production deployment ${{ github.sha }}"
+          git push origin --tags || true
+  
+  smoke-test:
+    name: Production Smoke Tests
+    runs-on: ubuntu-latest
+    needs: deploy
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install test dependencies
+        run: |
+          pip install httpx pytest
+      
+      - name: Get production URL
+        id: get-url
+        run: |
+          echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}' | gcloud auth activate-service-account --key-file=-
+          gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
+          
+          PROD_URL=$(gcloud run services describe ${{ secrets.GCP_PROJECT_ID }}-production-gateway --region us-central1 --format 'value(status.url)')
+          echo "prod_url=$PROD_URL" >> $GITHUB_OUTPUT
+      
+      - name: Run smoke tests
+        env:
+          PROD_URL: ${{ steps.get-url.outputs.prod_url }}
+        run: |
+          # Basic health checks
+          curl -f $PROD_URL/health || exit 1
+          curl -f $PROD_URL/api/health || exit 1
+          
+          echo "✅ Production smoke tests passed"
+  
+  notify:
+    name: Notify Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy, smoke-test]
+    if: always()
+    
+    steps:
+      - name: Send notification
+        run: |
+          if [ "${{ needs.deploy.result }}" == "success" ] && [ "${{ needs.smoke-test.result }}" == "success" ]; then
+            echo "🚀 Production deployment successful!"
+            echo "All services deployed and smoke tests passed."
+          else
+            echo "❌ Production deployment failed!"
+            echo "Check the workflow logs for details."
+            exit 1
+          fi

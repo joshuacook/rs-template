@@ -21,7 +21,12 @@ class TestRunner:
         self.environment = environment
         self.verbose = verbose
         self.project_id = os.getenv("GCP_PROJECT_ID", "PROJECT_NAME")
-        self.test_token = os.getenv(f"TEST_BYPASS_TOKEN_{self.project_id.upper().replace('-', '_')}", "")
+        # Try multiple token env var formats
+        self.test_token = (
+            os.getenv("TEST_BYPASS_TOKEN") or 
+            os.getenv(f"TEST_BYPASS_TOKEN_{self.project_id.upper().replace('-', '_')}") or
+            ""
+        )
         
         # Set base URLs based on environment
         if environment == "local":
@@ -200,9 +205,12 @@ def main():
     
     # Check for test token
     project_id = os.getenv("GCP_PROJECT_ID", "PROJECT_NAME")
-    token_key = f"TEST_BYPASS_TOKEN_{project_id.upper().replace('-', '_')}"
-    if not os.getenv(token_key):
-        print(f"ERROR: {token_key} not set in environment")
+    test_token = (
+        os.getenv("TEST_BYPASS_TOKEN") or 
+        os.getenv(f"TEST_BYPASS_TOKEN_{project_id.upper().replace('-', '_')}")
+    )
+    if not test_token:
+        print(f"ERROR: TEST_BYPASS_TOKEN not set in environment")
         print("Please set the test bypass token in your .env file or environment")
         sys.exit(1)
     

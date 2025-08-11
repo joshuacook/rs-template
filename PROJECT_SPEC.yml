@@ -1,0 +1,193 @@
+project:
+  name: rs-template
+  description: Template for 3-service architecture (Gateway, API, AI)
+  organization: radical-symmetry
+  
+repository:
+  url: git@github.com:joshuacook/rs-template.git
+  default_branch: main
+  branches:
+    main: 
+      status: exists
+      protected: false
+    staging: 
+      status: not_created
+      protected: false
+  
+gcp:
+  project:
+    project_id: rs-template-dev
+    status: created
+    services_enabled:
+      - cloudrun
+      - firestore
+      - storage
+      - secretmanager
+      - artifactregistry
+      - cloudbuild
+      - logging
+      - monitoring
+    environments:
+      production:
+        services:
+          - rs-template-dev-production-gateway
+          - rs-template-dev-production-api
+          - rs-template-dev-production-ai
+        status: not_deployed
+      staging:
+        services:
+          - rs-template-dev-staging-gateway
+          - rs-template-dev-staging-api
+          - rs-template-dev-staging-ai
+        status: not_deployed
+  
+  service_accounts:
+    local_development:
+      file: local-development-key.json
+      status: created
+      permissions:
+        - firestore
+        - storage
+    github_actions:
+      file: github-actions-key.json
+      status: created
+      permissions:
+        - cloudrun.admin
+        - storage.admin
+        - secretmanager.admin
+        - artifactregistry.writer
+  
+  storage_bucket:
+    name: rs-template-dev-uploads
+    status: created
+    shared_by: [production, staging]
+
+secrets:
+  gcp_secret_manager:
+    test_bypass_token:
+      name: test-bypass-token-rs-template
+      status: created
+      value_hash: 918c2895ea00ae8265eeb09a47e83d97
+    openai_api_key:
+      name: openai-api-key
+      status: not_created
+    langfuse_keys:
+      status: not_created
+  
+  github_secrets:
+    GCP_SERVICE_ACCOUNT_KEY:
+      status: not_configured
+      description: github-actions-key.json content
+    GCP_PROJECT_ID:
+      status: not_configured
+      value: rs-template-dev
+    TEST_BYPASS_TOKEN:
+      status: not_configured
+      description: matches value in secret manager
+    OPENAI_API_KEY:
+      status: not_configured
+    CLERK_SECRET_KEY:
+      status: not_configured
+    CLERK_PUBLISHABLE_KEY:
+      status: not_configured
+    LANGFUSE_SECRET_KEY:
+      status: not_configured
+    LANGFUSE_PUBLIC_KEY:
+      status: not_configured
+
+services:
+  gateway:
+    port: 8080
+    docker_image: gateway:latest
+    health_endpoint: /health
+    authentication: test_bypass_token
+    routes:
+      - /api/* -> api_service
+      - /ai/* -> ai_service
+  
+  api:
+    port: 8081
+    docker_image: api:latest
+    health_endpoint: /health
+    requires:
+      - firestore
+      - cloud_storage
+    endpoints:
+      - /items (CRUD)
+      - /files (upload/download)
+      - /users/me
+  
+  ai:
+    port: 8082
+    docker_image: ai:latest
+    health_endpoint: /health
+    model: gpt-5-mini
+    requires:
+      - openai_api_key
+    endpoints:
+      - /chat
+
+testing:
+  unit_tests:
+    gateway: 5 tests passing
+    api: 6 failing (firestore mock needed)
+    ai: 4 tests passing
+  
+  integration_tests:
+    e2e: 7 tests passing
+    firestore: created, not run against staging
+    storage: created, not run against staging
+  
+  tools:
+    linting: ruff
+    formatting: ruff format
+    package_manager: uv
+    test_runner: pytest
+
+ci_cd:
+  github_actions:
+    pr_to_staging:
+      file: .github/workflows/pr-staging.yml
+      status: created
+      checks:
+        - lint
+        - unit_tests
+        - docker_build
+    
+    deploy_staging:
+      file: .github/workflows/deploy-staging.yml
+      status: created
+      triggers: push to staging
+      actions:
+        - build_images
+        - push_to_registry
+        - deploy_to_cloud_run
+        - run_integration_tests
+    
+    pr_to_main:
+      file: .github/workflows/pr-main.yml
+      status: created
+      checks:
+        - production_readiness
+        - secret_scanning
+        - staging_verification
+    
+    deploy_production:
+      file: .github/workflows/deploy-production.yml
+      status: created
+      triggers: push to main
+      actions:
+        - deploy_to_cloud_run
+        - smoke_tests
+        - notifications
+
+current_status:
+  phase: development_complete
+  last_action: created github actions workflows
+  uncommitted_changes: true
+  next_steps:
+    - commit all changes
+    - create staging branch
+    - configure github secrets
+    - create staging gcp project
+    - test pr workflow

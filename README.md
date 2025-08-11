@@ -2,122 +2,84 @@
 
 This template provides the base structure for all Radical Symmetry projects (rs-athena, rs-esther, rs-muse, rs-zelda).
 
-## Architecture
+## Documentation Structure
 
-The template follows a 3-service architecture:
-- **Gateway Service**: Public-facing authentication and routing
-- **API Service**: Core business logic (internal)
-- **AI Service**: AI/LLM operations (internal)
+- **[PROJECT_SPEC.yml](PROJECT_SPEC.yml)** - Complete project specification and configuration
+- **[PROJECT_STATUS.md](PROJECT_STATUS.md)** - Current deployment and development status
+- **[DEPLOYMENT_PLAYBOOK.md](../DEPLOYMENT_PLAYBOOK.md)** - Step-by-step deployment instructions
 
-## Directory Structure
+## Quick Start
 
-```
-template/
-├── services/
-│   ├── gateway/       # Auth gateway service
-│   ├── api/           # Main API service
-│   └── ai/            # AI processing service
-├── mobile/            # React Native mobile app
-├── .github/
-│   └── workflows/     # GitHub Actions CI/CD
-└── docs/             # Documentation
-```
-
-## Services
-
-### Gateway Service (Port 8080)
-- Handles authentication via Clerk
-- Routes requests to internal services
-- Public-facing endpoint
-
-### API Service (Port 8081)
-- Core business logic
-- Database operations (Firestore)
-- File storage (Cloud Storage)
-
-### AI Service (Port 8082)
-- OpenAI integration
-- Langfuse tracing
-- AI-powered features
-
-## Configuration
-
-Each service uses environment variables for configuration:
-- `PROJECT_ID`: GCP project ID
-- `ENVIRONMENT`: production/staging/development
-- `CLERK_*`: Clerk authentication
-- `OPENAI_API_KEY`: OpenAI API key
-- `LANGFUSE_*`: Langfuse tracing
-
-## Deployment
-
-The deployment workflow follows this pattern:
-- **PR to staging branch** → Runs all tests
-- **Merge to staging branch** → Deploys to staging environment
-- **Merge to main branch** → Deploys to production environment
-
-## Usage
-
-To use this template for a new project:
-
-1. Copy the template to your project directory
-2. Update PROJECT_NAME placeholders with your project name
-3. Configure GitHub secrets
-4. Push to trigger deployment
-
-## Testing Strategy
-
-**Important**: No GCP services are ever mocked. All tests use real GCP services.
-
-### Unit Tests
-- Test business logic only (not external functionality)
-- Run in UV environments within each service
-- Located in `services/{service}/tests/unit/`
-- Run with: `cd services/gateway && uv run pytest tests/unit/`
-
-### Integration Tests
-- Test real service interactions with actual GCP services
-- Located in `services/{service}/tests/integration/`
-- Orchestrated by test runner tool
-- Require test bypass token for authentication
-
-### Test Bypass Token
-Each project has a test bypass token that allows integration tests to authenticate without Clerk:
-- Token name: `TEST_BYPASS_TOKEN_PROJECT_NAME`
-- Stored in: GitHub Secrets, GCP Secret Manager, local `.env`
-- When used, gateway passes standardized test admin user to internal services
-- Services don't know they're being tested - they receive normal user headers
-
-### Running Tests
-
-```bash
-# Unit tests for a service
-cd services/gateway
-uv run pytest tests/unit/
-
-# Integration tests locally (requires docker-compose running)
-cd tools/test-runner
-python run_tests.py local -v
-
-# Integration tests against staging
-python run_tests.py staging -v
-
-# Integration tests against production (use with caution)
-python run_tests.py production
-
-# Test specific service only
-python run_tests.py local -s gateway
-```
-
-## Development
+### Local Development
 
 ```bash
 # Copy .env.example to .env and fill in values
 cp .env.example .env
 
-# Run services locally
+# Run services locally with Docker Compose
 docker-compose up
 
-# Run individual service
+# Or run individual service
 cd services/gateway && python main.py
 ```
+
+### Running Tests
+
+```bash
+# Unit tests for a service
+cd services/gateway && uv run pytest tests/unit/
+
+# All tests summary
+make test-summary
+
+# Integration tests (requires Docker Compose running)
+cd services/gateway
+TEST_BYPASS_TOKEN="your-token" TEST_BASE_URL="http://localhost:8080" \
+  uv run pytest tests/integration/ -v
+```
+
+### Linting
+
+```bash
+# Format code
+ruff format services/
+
+# Check linting
+ruff check services/
+```
+
+## Deployment Workflow
+
+1. **PR to staging** → Runs linting, unit tests, docker build checks
+2. **Merge to staging** → Deploys to staging Cloud Run + runs integration tests
+3. **PR to main** → Production readiness checks
+4. **Merge to main** → Deploys to production Cloud Run
+
+## Using This Template
+
+1. Copy the template to your new project
+2. Update `PROJECT_SPEC.yml` with your project details
+3. Replace `rs-template-dev` with your GCP project ID
+4. Configure GitHub secrets (see PROJECT_SPEC.yml for list)
+5. Create staging branch: `git checkout -b staging`
+6. Push to trigger deployment workflows
+
+## Project Structure
+
+```
+rs-template/
+├── services/
+│   ├── gateway/       # Auth gateway service (port 8080)
+│   ├── api/          # Main API service (port 8081)
+│   └── ai/           # AI service (port 8082)
+├── tools/
+│   ├── test-runner/  # Integration test orchestrator
+│   └── check-openai-models.py
+├── .github/
+│   └── workflows/    # GitHub Actions CI/CD
+├── PROJECT_SPEC.yml  # Project specification
+├── PROJECT_STATUS.md # Current status
+└── docker-compose.yml
+```
+
+For detailed information, refer to the documentation files listed above.

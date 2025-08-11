@@ -5,9 +5,17 @@ services:
       - "8080:8080"
     environment:
       - ENVIRONMENT=development
-      - GCP_PROJECT_ID=local-dev
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/local-development-key.json
       - API_SERVICE_URL=http://api:8081
       - AI_SERVICE_URL=http://ai:8082
+      - TEST_BYPASS_TOKEN=${TEST_BYPASS_TOKEN}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      - CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
+      - CLERK_DOMAIN=${CLERK_DOMAIN}
+      - CLERK_JWKS_URL=${CLERK_JWKS_URL}
+    volumes:
+      - ./local-development-key.json:/app/local-development-key.json:ro
     depends_on:
       - api
       - ai
@@ -20,8 +28,11 @@ services:
       - "8081:8081"
     environment:
       - ENVIRONMENT=development
-      - GCP_PROJECT_ID=local-dev
-      - STORAGE_BUCKET=local-uploads
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/local-development-key.json
+      - STORAGE_BUCKET=rs-template-dev-uploads
+    volumes:
+      - ./local-development-key.json:/app/local-development-key.json:ro
     networks:
       - app-network
 
@@ -31,11 +42,14 @@ services:
       - "8082:8082"
     environment:
       - ENVIRONMENT=development
-      - GCP_PROJECT_ID=local-dev
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/local-development-key.json
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
       - LANGFUSE_HOST=${LANGFUSE_HOST}
+    volumes:
+      - ./local-development-key.json:/app/local-development-key.json:ro
     networks:
       - app-network
 
