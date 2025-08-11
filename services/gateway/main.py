@@ -111,7 +111,7 @@ async def debug_env():
         "environment": ENVIRONMENT,
         "test_bypass_token_configured": bool(TEST_BYPASS_TOKEN),
         "test_bypass_token_length": len(TEST_BYPASS_TOKEN) if TEST_BYPASS_TOKEN else 0,
-        "clerk_configured": bool(CLERK_SECRET_KEY),
+        "clerk_jwks_url_configured": bool(CLERK_JWKS_URL),
         "jwks_configured": bool(jwks_client),
         "project_id": PROJECT_ID
     }
