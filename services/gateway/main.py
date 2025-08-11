@@ -53,6 +53,11 @@ def verify_token(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         )
 
     # Check for test bypass token
+    print(f"DEBUG: TEST_BYPASS_TOKEN configured: {bool(TEST_BYPASS_TOKEN)}")
+    print(f"DEBUG: TEST_BYPASS_TOKEN length: {len(TEST_BYPASS_TOKEN) if TEST_BYPASS_TOKEN else 0}")
+    print(f"DEBUG: Auth header length: {len(authorization)}")
+    print(f"DEBUG: Token match: {authorization == f'Bearer {TEST_BYPASS_TOKEN}'}")
+    
     if TEST_BYPASS_TOKEN and authorization == f"Bearer {TEST_BYPASS_TOKEN}":
         # Return standardized test admin user
         return {
@@ -98,6 +103,18 @@ async def root():
 async def health():
     """Health check endpoint"""
     return {"status": "healthy", "service": "gateway"}
+
+@app.get("/debug/env")
+async def debug_env():
+    """Debug endpoint to check environment"""
+    return {
+        "environment": ENVIRONMENT,
+        "test_bypass_token_configured": bool(TEST_BYPASS_TOKEN),
+        "test_bypass_token_length": len(TEST_BYPASS_TOKEN) if TEST_BYPASS_TOKEN else 0,
+        "clerk_configured": bool(CLERK_SECRET_KEY),
+        "jwks_configured": bool(jwks_client),
+        "project_id": PROJECT_ID
+    }
 
 
 @app.api_route(
