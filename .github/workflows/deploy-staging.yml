@@ -69,7 +69,7 @@ jobs:
             --port 8080 \
             --allow-unauthenticated \
             --set-env-vars="ENVIRONMENT=staging,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }}" \
-            --set-secrets="TEST_BYPASS_TOKEN=test-bypass-token-staging:latest"
+            --set-secrets="TEST_BYPASS_TOKEN=TEST_BYPASS_TOKEN:latest"
           
           # Get Gateway URL for other services
           GATEWAY_URL=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-staging-gateway --region ${{ env.GCP_REGION }} --format 'value(status.url)')
@@ -90,8 +90,7 @@ jobs:
             --region ${{ env.GCP_REGION }} \
             --port 8082 \
             --no-allow-unauthenticated \
-            --set-env-vars="ENVIRONMENT=staging,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},OPENAI_MODEL=gpt-5-mini" \
-            --set-secrets="OPENAI_API_KEY=openai-api-key:latest,LANGFUSE_SECRET_KEY=langfuse-secret-key:latest,LANGFUSE_PUBLIC_KEY=langfuse-public-key:latest"
+            --set-env-vars="ENVIRONMENT=staging,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},OPENAI_MODEL=gpt-5-mini,OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }},LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }},LANGFUSE_HOST=${{ secrets.LANGFUSE_HOST }}"
       
       - name: Wait for services to be ready
         run: |
