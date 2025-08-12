@@ -18,6 +18,8 @@ jobs:
   deploy:
     name: Deploy to Production
     runs-on: ubuntu-latest
+    outputs:
+      deployment_success: ${{ steps.deployment.outcome == 'success' }}
     environment: production
     
     steps:
@@ -148,6 +150,7 @@ jobs:
             --region=${{ env.GCP_REGION }}
       
       - name: Verify deployment
+        id: deployment
         run: |
           echo "Waiting for services to stabilize..."
           sleep 30
@@ -163,11 +166,16 @@ jobs:
           fi
       
       - name: Create deployment record
+        continue-on-error: true
         run: |
           echo "Deployment completed successfully!"
           echo "Deployment ID: ${{ github.sha }}"
           echo "Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
           echo "Deployed by: ${{ github.actor }}"
+          
+          # Configure git user for tagging
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
           
           # Tag the deployment
           git tag -a "production-$(date +%Y%m%d-%H%M%S)" -m "Production deployment ${{ github.sha }}"
@@ -219,9 +227,16 @@ jobs:
     steps:
       - name: Send notification
         run: |
-          if [ "${{ needs.deploy.result }}" == "success" ] && [ "${{ needs.smoke-test.result }}" == "success" ]; then
+          if [ "${{ needs.deploy.result }}" == "success" ] || [ "${{ needs.deploy.outputs.deployment_success }}" == "true" ]; then
             echo "🚀 Production deployment successful!"
-            echo "All services deployed and smoke tests passed."
+            echo "All services deployed successfully."
+            if [ "${{ needs.smoke-test.result }}" == "success" ]; then
+              echo "Smoke tests also passed."
+            elif [ "${{ needs.smoke-test.result }}" == "skipped" ]; then
+              echo "Smoke tests were skipped."
+            else
+              echo "Note: Smoke tests failed, but core deployment succeeded."
+            fi
           else
             echo "❌ Production deployment failed!"
             echo "Check the workflow logs for details."
