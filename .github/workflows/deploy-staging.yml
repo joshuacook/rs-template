@@ -108,6 +108,16 @@ jobs:
             --member="serviceAccount:${GATEWAY_SA}" \
             --role="roles/run.invoker" \
             --region=${{ env.GCP_REGION }}
+          
+          # Get the API service account to grant it permission to sign its own tokens
+          API_SA=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-staging-api \
+            --region=${{ env.GCP_REGION }} \
+            --format="value(spec.template.spec.serviceAccountName)")
+          
+          # Grant API service account permission to sign its own tokens for pre-signed URLs
+          gcloud iam service-accounts add-iam-policy-binding ${API_SA} \
+            --member="serviceAccount:${API_SA}" \
+            --role="roles/iam.serviceAccountTokenCreator"
       
       - name: Wait for services to be ready
         run: |
