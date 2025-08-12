@@ -92,6 +92,22 @@ jobs:
             --allow-unauthenticated \
             --set-env-vars="ENVIRONMENT=staging,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},API_BASE_URL=${API_URL},AI_BASE_URL=${AI_URL}" \
             --set-secrets="TEST_BYPASS_TOKEN=TEST_BYPASS_TOKEN:latest"
+          
+          # Get the gateway service account
+          GATEWAY_SA=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-staging-gateway \
+            --region=${{ env.GCP_REGION }} \
+            --format="value(spec.template.spec.serviceAccountName)")
+          
+          # Grant gateway permission to invoke API and AI services
+          gcloud run services add-iam-policy-binding ${{ env.GCP_PROJECT_ID }}-staging-api \
+            --member="serviceAccount:${GATEWAY_SA}" \
+            --role="roles/run.invoker" \
+            --region=${{ env.GCP_REGION }}
+          
+          gcloud run services add-iam-policy-binding ${{ env.GCP_PROJECT_ID }}-staging-ai \
+            --member="serviceAccount:${GATEWAY_SA}" \
+            --role="roles/run.invoker" \
+            --region=${{ env.GCP_REGION }}
       
       - name: Wait for services to be ready
         run: |
