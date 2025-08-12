@@ -39,7 +39,7 @@ gcp:
           - rs-template-dev-staging-gateway
           - rs-template-dev-staging-api
           - rs-template-dev-staging-ai
-        status: not_deployed
+        status: pending_deployment
   
   service_accounts:
     local_development:

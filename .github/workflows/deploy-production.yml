@@ -39,7 +39,7 @@ jobs:
       - name: Build and push Gateway image
         run: |
           docker build -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:${{ github.sha }} \
-            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/services/gateway:latest \
+            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:latest \
             services/gateway
           docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:${{ github.sha }}
           docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:latest
@@ -47,7 +47,7 @@ jobs:
       - name: Build and push API image
         run: |
           docker build -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:${{ github.sha }} \
-            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/services/api:latest \
+            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:latest \
             services/api
           docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:${{ github.sha }}
           docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:latest
@@ -55,14 +55,17 @@ jobs:
       - name: Build and push AI image
         run: |
           docker build -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/ai:${{ github.sha }} \
-            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/services/ai:latest \
+            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/ai:latest \
             services/ai
           docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/ai:${{ github.sha }}
           docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/ai:latest
       
       - name: Deploy to Cloud Run
         run: |
-          # Deploy Gateway
+          # Get Cloud Run suffix for URLs (project ID hash)
+          CLOUD_RUN_SUFFIX=$(echo -n "${{ env.GCP_PROJECT_ID }}" | sha256sum | cut -c1-16)
+          
+          # Deploy Gateway with proper service URLs
           gcloud run deploy ${{ env.GCP_PROJECT_ID }}-production-gateway \
             --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:${{ github.sha }} \
             --platform managed \
@@ -73,7 +76,7 @@ jobs:
             --max-instances 100 \
             --cpu 1 \
             --memory 512Mi \
-            --set-env-vars="ENVIRONMENT=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }}" \
+            --set-env-vars="ENVIRONMENT=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},API_BASE_URL=https://${{ env.GCP_PROJECT_ID }}-production-api-${CLOUD_RUN_SUFFIX}-uc.a.run.app,AI_BASE_URL=https://${{ env.GCP_PROJECT_ID }}-production-ai-${CLOUD_RUN_SUFFIX}-uc.a.run.app" \
             --set-secrets="TEST_BYPASS_TOKEN=TEST_BYPASS_TOKEN:latest"
           
           # Deploy API
