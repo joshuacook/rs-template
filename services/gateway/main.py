@@ -5,7 +5,6 @@ import os
 import httpx
 from fastapi import FastAPI, Request, HTTPException, Depends, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 from typing import Optional, Dict, Any
 import jwt
 from jwt import PyJWKClient
@@ -167,37 +166,7 @@ async def proxy_to_api(path: str, request: Request, user=Depends(verify_token)):
         if query_params:
             url = f"{url}?{query_params}"
 
-        # Make the request (use stream for downloads)
-        if "download" in path:
-            # For downloads, use streaming
-            async with client.stream(
-                method=request.method,
-                url=url,
-                headers=headers,
-                content=await request.body()
-                if request.method in ["POST", "PUT", "PATCH"]
-                else None,
-            ) as response:
-                # Stream the response back
-                async def iterfile():
-                    async for chunk in response.aiter_bytes(chunk_size=8192):
-                        yield chunk
-                
-                # Get headers to forward
-                headers_to_forward = {
-                    key: value
-                    for key, value in response.headers.items()
-                    if key.lower() not in ["content-encoding", "content-length", "transfer-encoding", "connection"]
-                }
-                
-                return StreamingResponse(
-                    iterfile(),
-                    status_code=response.status_code,
-                    headers=headers_to_forward,
-                    media_type=response.headers.get("content-type", "application/octet-stream")
-                )
-        
-        # For non-downloads, use regular request
+        # Make the request
         response = await client.request(
             method=request.method,
             url=url,

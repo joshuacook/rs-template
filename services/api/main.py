@@ -245,7 +245,7 @@ async def upload_file(
 
 @app.get("/files/{file_id}/download")
 async def download_file(file_id: str, user: Dict = Depends(get_user_from_headers)):
-    """Download a file from Cloud Storage"""
+    """Get a pre-signed URL for downloading a file from Cloud Storage"""
     if not storage_client:
         raise HTTPException(status_code=503, detail="Storage not available")
 
@@ -273,20 +273,29 @@ async def download_file(file_id: str, user: Dict = Depends(get_user_from_headers
             file_name = "download"
             content_type = "application/octet-stream"
 
-        # Download from storage
+        # Generate pre-signed URL
         bucket = storage_client.bucket(STORAGE_BUCKET)
         blob = bucket.blob(file_path)
 
         if not blob.exists():
             raise HTTPException(status_code=404, detail="File not found in storage")
 
-        contents = blob.download_as_bytes()
-
-        return StreamingResponse(
-            io.BytesIO(contents),
-            media_type=content_type,
-            headers={"Content-Disposition": f"attachment; filename={file_name}"},
+        # Generate a pre-signed URL valid for 1 hour
+        from datetime import timedelta
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(hours=1),
+            method="GET",
+            response_disposition=f"attachment; filename={file_name}",
+            response_type=content_type
         )
+
+        return {
+            "download_url": url,
+            "file_name": file_name,
+            "content_type": content_type,
+            "expires_in": 3600  # seconds
+        }
     except HTTPException:
         raise
     except Exception as e:
