@@ -62,13 +62,38 @@ jobs:
       
       - name: Deploy to Cloud Run
         run: |
-          # Deploy API first
+          # Create service account for API if it doesn't exist
+          gcloud iam service-accounts create api-service-production \
+            --display-name="API Service Production" || true
+          
+          # Grant necessary permissions to the API service account
+          API_SA_EMAIL="api-service-production@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com"
+          
+          # Grant GitHub Actions SA permission to act as the API service account
+          GITHUB_SA="${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}"
+          gcloud iam service-accounts add-iam-policy-binding ${API_SA_EMAIL} \
+            --member="serviceAccount:${GITHUB_SA}" \
+            --role="roles/iam.serviceAccountUser" || true
+          
+          # Grant editor role for full access
+          gcloud projects add-iam-policy-binding ${{ env.GCP_PROJECT_ID }} \
+            --member="serviceAccount:${API_SA_EMAIL}" \
+            --role="roles/editor" \
+            --condition=None || true
+          
+          # Grant service account token creator for signing
+          gcloud iam service-accounts add-iam-policy-binding ${API_SA_EMAIL} \
+            --member="serviceAccount:${API_SA_EMAIL}" \
+            --role="roles/iam.serviceAccountTokenCreator" || true
+          
+          # Deploy API with the service account
           gcloud run deploy ${{ env.GCP_PROJECT_ID }}-production-api \
             --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:${{ github.sha }} \
             --platform managed \
             --region ${{ env.GCP_REGION }} \
             --port 8081 \
             --no-allow-unauthenticated \
+            --service-account=${API_SA_EMAIL} \
             --min-instances 1 \
             --max-instances 100 \
             --cpu 2 \
