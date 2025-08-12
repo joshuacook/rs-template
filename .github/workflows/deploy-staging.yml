@@ -61,13 +61,32 @@ jobs:
       
       - name: Deploy to Cloud Run
         run: |
-          # Deploy API first
+          # Create service account for API if it doesn't exist
+          gcloud iam service-accounts create api-service-staging \
+            --display-name="API Service Staging" || true
+          
+          # Grant necessary permissions to the API service account
+          API_SA_EMAIL="api-service-staging@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com"
+          
+          # Grant storage admin for the bucket
+          gcloud projects add-iam-policy-binding ${{ env.GCP_PROJECT_ID }} \
+            --member="serviceAccount:${API_SA_EMAIL}" \
+            --role="roles/storage.objectAdmin" \
+            --condition=None || true
+          
+          # Grant service account token creator for signing
+          gcloud iam service-accounts add-iam-policy-binding ${API_SA_EMAIL} \
+            --member="serviceAccount:${API_SA_EMAIL}" \
+            --role="roles/iam.serviceAccountTokenCreator" || true
+          
+          # Deploy API with the service account
           gcloud run deploy ${{ env.GCP_PROJECT_ID }}-staging-api \
             --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:staging-${{ github.sha }} \
             --platform managed \
             --region ${{ env.GCP_REGION }} \
             --port 8081 \
             --no-allow-unauthenticated \
+            --service-account=${API_SA_EMAIL} \
             --set-env-vars="ENVIRONMENT=staging,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},STORAGE_BUCKET=${{ env.GCP_PROJECT_ID }}-uploads-staging"
           
           # Deploy AI
@@ -109,17 +128,6 @@ jobs:
             --role="roles/run.invoker" \
             --region=${{ env.GCP_REGION }}
           
-          # Get the API service account to grant it permission to sign its own tokens
-          API_SA=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-staging-api \
-            --region=${{ env.GCP_REGION }} \
-            --format="value(spec.template.spec.serviceAccountName)")
-          
-          # Grant API service account permission to sign its own tokens for pre-signed URLs
-          # Note: This uses project-level IAM policy since we may not have permission on the service account itself
-          gcloud projects add-iam-policy-binding ${{ env.GCP_PROJECT_ID }} \
-            --member="serviceAccount:${API_SA}" \
-            --role="roles/iam.serviceAccountTokenCreator" \
-            --condition=None || true
       
       - name: Wait for services to be ready
         run: |
