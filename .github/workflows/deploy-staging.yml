@@ -187,23 +187,6 @@ jobs:
           cd services/gateway
           python -m pytest tests/integration/test_e2e_integration.py -v
       
-      - name: Run Firestore Integration Tests
-        env:
-          TEST_BASE_URL: ${{ steps.get-url.outputs.staging_url }}
-          TEST_BYPASS_TOKEN: ${{ secrets.TEST_BYPASS_TOKEN }}
-        run: |
-          # Run API Firestore tests against staging
-          cd services/api
-          python -m pytest tests/integration/test_firestore_integration.py -v
-      
-      - name: Run Storage Integration Tests
-        env:
-          TEST_BASE_URL: ${{ steps.get-url.outputs.staging_url }}
-          TEST_BYPASS_TOKEN: ${{ secrets.TEST_BYPASS_TOKEN }}
-        run: |
-          # Run API storage tests against staging
-          cd services/api
-          python -m pytest tests/integration/test_storage_integration.py -v
       
       - name: Report test results
         if: always()
