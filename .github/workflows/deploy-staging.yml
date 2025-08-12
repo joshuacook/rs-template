@@ -68,6 +68,12 @@ jobs:
           # Grant necessary permissions to the API service account
           API_SA_EMAIL="api-service-staging@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com"
           
+          # Grant GitHub Actions SA permission to act as the API service account
+          GITHUB_SA="${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}"
+          gcloud iam service-accounts add-iam-policy-binding ${API_SA_EMAIL} \
+            --member="serviceAccount:${GITHUB_SA}" \
+            --role="roles/iam.serviceAccountUser" || true
+          
           # Grant storage admin for the bucket
           gcloud projects add-iam-policy-binding ${{ env.GCP_PROJECT_ID }} \
             --member="serviceAccount:${API_SA_EMAIL}" \
