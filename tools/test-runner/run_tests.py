@@ -32,9 +32,10 @@ class TestRunner:
         if environment == "local":
             self.base_url = "http://localhost:8080"
         elif environment == "staging":
-            self.base_url = f"https://{self.project_id}-gateway-staging-us-central1.a.run.app"
+            # Get the actual Cloud Run URL for staging
+            self.base_url = f"https://{self.project_id}-staging-gateway-uzycsxsteq-uc.a.run.app"
         elif environment == "production":
-            self.base_url = f"https://{self.project_id}-gateway-us-central1.a.run.app"
+            self.base_url = f"https://{self.project_id}-production-gateway-uzycsxsteq-uc.a.run.app"
         else:
             raise ValueError(f"Unknown environment: {environment}")
         

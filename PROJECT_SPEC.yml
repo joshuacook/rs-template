@@ -39,7 +39,7 @@ gcp:
           - rs-template-dev-staging-gateway
           - rs-template-dev-staging-api
           - rs-template-dev-staging-ai
-        status: not_deployed
+        status: pending_deployment
   
   service_accounts:
     local_development:
@@ -65,35 +65,55 @@ gcp:
 secrets:
   gcp_secret_manager:
     test_bypass_token:
-      name: test-bypass-token-rs-template
+      name: TEST_BYPASS_TOKEN
       status: created
-      value_hash: 918c2895ea00ae8265eeb09a47e83d97
+      created: 2025-08-09
+      description: Test authentication token for integration tests
     openai_api_key:
       name: openai-api-key
       status: not_created
+      description: Would store OpenAI key in GCP if needed
     langfuse_keys:
       status: not_created
+      description: Would store Langfuse keys in GCP if needed
   
   github_secrets:
     GCP_SERVICE_ACCOUNT_KEY:
-      status: not_configured
+      status: configured
+      created: 2025-08-09
       description: github-actions-key.json content
     GCP_PROJECT_ID:
-      status: not_configured
+      status: configured
+      created: 2025-08-09
       value: rs-template-dev
     TEST_BYPASS_TOKEN:
-      status: not_configured
+      status: configured
+      created: 2025-08-09
       description: matches value in secret manager
     OPENAI_API_KEY:
-      status: not_configured
+      status: configured
+      created: 2025-08-09
     CLERK_SECRET_KEY:
-      status: not_configured
+      status: configured
+      created: 2025-08-09
     CLERK_PUBLISHABLE_KEY:
-      status: not_configured
+      status: configured
+      created: 2025-08-09
+    CLERK_DOMAIN:
+      status: configured
+      created: 2025-08-09
+    CLERK_JWKS_URL:
+      status: configured
+      created: 2025-08-09
     LANGFUSE_SECRET_KEY:
-      status: not_configured
+      status: configured
+      created: 2025-08-09
     LANGFUSE_PUBLIC_KEY:
-      status: not_configured
+      status: configured
+      created: 2025-08-09
+    LANGFUSE_HOST:
+      status: configured
+      created: 2025-08-09
 
 services:
   gateway:

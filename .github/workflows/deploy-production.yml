@@ -39,7 +39,7 @@ jobs:
       - name: Build and push Gateway image
         run: |
           docker build -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:${{ github.sha }} \
-            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/services/gateway:latest \
+            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:latest \
             services/gateway
           docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:${{ github.sha }}
           docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:latest
@@ -47,7 +47,7 @@ jobs:
       - name: Build and push API image
         run: |
           docker build -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:${{ github.sha }} \
-            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/services/api:latest \
+            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:latest \
             services/api
           docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:${{ github.sha }}
           docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:latest
@@ -55,28 +55,14 @@ jobs:
       - name: Build and push AI image
         run: |
           docker build -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/ai:${{ github.sha }} \
-            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/services/ai:latest \
+            -t ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/ai:latest \
             services/ai
           docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/ai:${{ github.sha }}
           docker push ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/ai:latest
       
       - name: Deploy to Cloud Run
         run: |
-          # Deploy Gateway
-          gcloud run deploy ${{ env.GCP_PROJECT_ID }}-production-gateway \
-            --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:${{ github.sha }} \
-            --platform managed \
-            --region ${{ env.GCP_REGION }} \
-            --port 8080 \
-            --allow-unauthenticated \
-            --min-instances 1 \
-            --max-instances 100 \
-            --cpu 1 \
-            --memory 512Mi \
-            --set-env-vars="ENVIRONMENT=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }}" \
-            --set-secrets="TEST_BYPASS_TOKEN=test-bypass-token:latest"
-          
-          # Deploy API
+          # Deploy API first
           gcloud run deploy ${{ env.GCP_PROJECT_ID }}-production-api \
             --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:${{ github.sha }} \
             --platform managed \
@@ -100,8 +86,41 @@ jobs:
             --max-instances 50 \
             --cpu 1 \
             --memory 1Gi \
-            --set-env-vars="ENVIRONMENT=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},OPENAI_MODEL=gpt-5-mini" \
-            --set-secrets="OPENAI_API_KEY=openai-api-key:latest,LANGFUSE_SECRET_KEY=langfuse-secret-key:latest,LANGFUSE_PUBLIC_KEY=langfuse-public-key:latest"
+            --set-env-vars="ENVIRONMENT=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},OPENAI_MODEL=gpt-5-mini,OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }},LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }},LANGFUSE_HOST=${{ secrets.LANGFUSE_HOST }}"
+          
+          # Get the actual service URLs after deployment
+          API_URL=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-production-api --region ${{ env.GCP_REGION }} --format 'value(status.url)')
+          AI_URL=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-production-ai --region ${{ env.GCP_REGION }} --format 'value(status.url)')
+          
+          # Deploy Gateway with the actual service URLs
+          gcloud run deploy ${{ env.GCP_PROJECT_ID }}-production-gateway \
+            --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:${{ github.sha }} \
+            --platform managed \
+            --region ${{ env.GCP_REGION }} \
+            --port 8080 \
+            --allow-unauthenticated \
+            --min-instances 1 \
+            --max-instances 100 \
+            --cpu 1 \
+            --memory 512Mi \
+            --set-env-vars="ENVIRONMENT=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},API_BASE_URL=${API_URL},AI_BASE_URL=${AI_URL}" \
+            --set-secrets="TEST_BYPASS_TOKEN=TEST_BYPASS_TOKEN:latest"
+          
+          # Get the gateway service account
+          GATEWAY_SA=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-production-gateway \
+            --region=${{ env.GCP_REGION }} \
+            --format="value(spec.template.spec.serviceAccountName)")
+          
+          # Grant gateway permission to invoke API and AI services
+          gcloud run services add-iam-policy-binding ${{ env.GCP_PROJECT_ID }}-production-api \
+            --member="serviceAccount:${GATEWAY_SA}" \
+            --role="roles/run.invoker" \
+            --region=${{ env.GCP_REGION }}
+          
+          gcloud run services add-iam-policy-binding ${{ env.GCP_PROJECT_ID }}-production-ai \
+            --member="serviceAccount:${GATEWAY_SA}" \
+            --role="roles/run.invoker" \
+            --region=${{ env.GCP_REGION }}
       
       - name: Verify deployment
         run: |
