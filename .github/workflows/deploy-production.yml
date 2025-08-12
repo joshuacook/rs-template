@@ -94,10 +94,10 @@ jobs:
             --port 8081 \
             --no-allow-unauthenticated \
             --service-account=${API_SA_EMAIL} \
-            --min-instances 1 \
-            --max-instances 100 \
-            --cpu 2 \
-            --memory 1Gi \
+            --min-instances 0 \
+            --max-instances 1 \
+            --cpu 1 \
+            --memory 512Mi \
             --set-env-vars="ENVIRONMENT=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},STORAGE_BUCKET=${{ env.GCP_PROJECT_ID }}-uploads"
           
           # Deploy AI
@@ -107,10 +107,10 @@ jobs:
             --region ${{ env.GCP_REGION }} \
             --port 8082 \
             --no-allow-unauthenticated \
-            --min-instances 1 \
-            --max-instances 50 \
+            --min-instances 0 \
+            --max-instances 1 \
             --cpu 1 \
-            --memory 1Gi \
+            --memory 512Mi \
             --set-env-vars="ENVIRONMENT=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},OPENAI_MODEL=gpt-5-mini,OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }},LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }},LANGFUSE_HOST=${{ secrets.LANGFUSE_HOST }}"
           
           # Get the actual service URLs after deployment
@@ -124,8 +124,8 @@ jobs:
             --region ${{ env.GCP_REGION }} \
             --port 8080 \
             --allow-unauthenticated \
-            --min-instances 1 \
-            --max-instances 100 \
+            --min-instances 0 \
+            --max-instances 1 \
             --cpu 1 \
             --memory 512Mi \
             --set-env-vars="ENVIRONMENT=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},API_BASE_URL=${API_URL},AI_BASE_URL=${AI_URL}" \
