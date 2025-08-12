@@ -273,23 +273,28 @@ async def download_file(file_id: str, user: Dict = Depends(get_user_from_headers
             file_name = "download"
             content_type = "application/octet-stream"
 
-        # Download file directly and return content
+        # Generate pre-signed URL
         bucket = storage_client.bucket(STORAGE_BUCKET)
         blob = bucket.blob(file_path)
 
         if not blob.exists():
             raise HTTPException(status_code=404, detail="File not found in storage")
 
-        # Download file content
-        file_content = blob.download_as_bytes()
+        # Generate a pre-signed URL valid for 1 hour
+        from datetime import timedelta
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(hours=1),
+            method="GET",
+            response_disposition=f"attachment; filename={file_name}",
+            response_type=content_type
+        )
 
-        # Return file content as JSON with base64 encoding
-        import base64
         return {
-            "file_content": base64.b64encode(file_content).decode('utf-8'),
+            "download_url": url,
             "file_name": file_name,
             "content_type": content_type,
-            "encoding": "base64"
+            "expires_in": 3600  # seconds
         }
     except HTTPException:
         raise
