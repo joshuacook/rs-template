@@ -61,20 +61,7 @@ jobs:
       
       - name: Deploy to Cloud Run
         run: |
-          # Get Cloud Run suffix for URLs (project ID hash)
-          CLOUD_RUN_SUFFIX=$(echo -n "${{ env.GCP_PROJECT_ID }}" | sha256sum | cut -c1-16)
-          
-          # Deploy Gateway with proper service URLs
-          gcloud run deploy ${{ env.GCP_PROJECT_ID }}-staging-gateway \
-            --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:staging-${{ github.sha }} \
-            --platform managed \
-            --region ${{ env.GCP_REGION }} \
-            --port 8080 \
-            --allow-unauthenticated \
-            --set-env-vars="ENVIRONMENT=staging,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},API_BASE_URL=https://${{ env.GCP_PROJECT_ID }}-staging-api-${CLOUD_RUN_SUFFIX}-uc.a.run.app,AI_BASE_URL=https://${{ env.GCP_PROJECT_ID }}-staging-ai-${CLOUD_RUN_SUFFIX}-uc.a.run.app" \
-            --set-secrets="TEST_BYPASS_TOKEN=TEST_BYPASS_TOKEN:latest"
-          
-          # Deploy API
+          # Deploy API first
           gcloud run deploy ${{ env.GCP_PROJECT_ID }}-staging-api \
             --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/api:staging-${{ github.sha }} \
             --platform managed \
@@ -91,6 +78,20 @@ jobs:
             --port 8082 \
             --no-allow-unauthenticated \
             --set-env-vars="ENVIRONMENT=staging,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},OPENAI_MODEL=gpt-5-mini,OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }},LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }},LANGFUSE_HOST=${{ secrets.LANGFUSE_HOST }}"
+          
+          # Get the actual service URLs after deployment
+          API_URL=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-staging-api --region ${{ env.GCP_REGION }} --format 'value(status.url)')
+          AI_URL=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-staging-ai --region ${{ env.GCP_REGION }} --format 'value(status.url)')
+          
+          # Deploy Gateway with the actual service URLs
+          gcloud run deploy ${{ env.GCP_PROJECT_ID }}-staging-gateway \
+            --image ${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/gateway:staging-${{ github.sha }} \
+            --platform managed \
+            --region ${{ env.GCP_REGION }} \
+            --port 8080 \
+            --allow-unauthenticated \
+            --set-env-vars="ENVIRONMENT=staging,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},API_BASE_URL=${API_URL},AI_BASE_URL=${AI_URL}" \
+            --set-secrets="TEST_BYPASS_TOKEN=TEST_BYPASS_TOKEN:latest"
       
       - name: Wait for services to be ready
         run: |
