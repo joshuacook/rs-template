@@ -273,21 +273,37 @@ async def download_file(file_id: str, user: Dict = Depends(get_user_from_headers
             file_name = "download"
             content_type = "application/octet-stream"
 
-        # Generate pre-signed URL
+        # Generate pre-signed URL using IAM SignBlob API
+        import google.auth
+        from google.auth import impersonated_credentials
+        from datetime import timedelta
+        
+        # Get current service account email
+        credentials, project = google.auth.default()
+        _, service_account_email = google.auth.default()
+        
+        # Create impersonated credentials for signing
+        signing_credentials = impersonated_credentials.Credentials(
+            source_credentials=credentials,
+            target_principal=f"api-service-staging@{PROJECT_ID}.iam.gserviceaccount.com",
+            target_scopes=["https://www.googleapis.com/auth/devstorage.read_only"],
+            lifetime=3600,
+        )
+
         bucket = storage_client.bucket(STORAGE_BUCKET)
         blob = bucket.blob(file_path)
 
         if not blob.exists():
             raise HTTPException(status_code=404, detail="File not found in storage")
 
-        # Generate a pre-signed URL valid for 1 hour
-        from datetime import timedelta
+        # Generate a pre-signed URL valid for 1 hour using impersonated credentials
         url = blob.generate_signed_url(
             version="v4",
             expiration=timedelta(hours=1),
             method="GET",
             response_disposition=f"attachment; filename={file_name}",
-            response_type=content_type
+            response_type=content_type,
+            credentials=signing_credentials
         )
 
         return {
