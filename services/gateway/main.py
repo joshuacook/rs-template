@@ -8,19 +8,40 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, Dict, Any
 import jwt
 from jwt import PyJWKClient
+import google.auth
+import google.auth.transport.requests
+import google.oauth2.id_token
 
 app = FastAPI(title="Gateway Service")
 
 # Configuration
 PROJECT_ID = os.getenv("GCP_PROJECT_ID", "PROJECT_NAME")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
-API_SERVICE_URL = os.getenv("API_SERVICE_URL", "http://localhost:8081")
-AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8082")
+API_SERVICE_URL = os.getenv("API_BASE_URL", "http://localhost:8081")
+AI_SERVICE_URL = os.getenv("AI_BASE_URL", "http://localhost:8082")
 CLERK_JWKS_URL = os.getenv(
     "CLERK_JWKS_URL",
     "https://clerk.PROJECT_NAME.radicalsymmetry.com/.well-known/jwks.json",
 )
 TEST_BYPASS_TOKEN = os.getenv("TEST_BYPASS_TOKEN", "")
+
+# Check if running in Cloud Run
+IS_CLOUD_RUN = os.getenv("K_SERVICE") is not None
+
+# Get authentication token for service-to-service calls
+def get_auth_token(target_url: str) -> Optional[str]:
+    """Get authentication token for calling Cloud Run services"""
+    if not IS_CLOUD_RUN:
+        return None
+    
+    try:
+        # Get ID token for the target audience (service URL)
+        auth_req = google.auth.transport.requests.Request()
+        id_token = google.oauth2.id_token.fetch_id_token(auth_req, target_url)
+        return id_token
+    except Exception as e:
+        print(f"Failed to get auth token for {target_url}: {e}")
+        return None
 
 # CORS configuration
 app.add_middleware(
@@ -131,6 +152,11 @@ async def proxy_to_api(path: str, request: Request, user=Depends(verify_token)):
         }
         headers["X-User-Id"] = user.get("user_id", "")
         headers["X-User-Email"] = user.get("email", "")
+        
+        # Add authentication for Cloud Run
+        auth_token = get_auth_token(API_SERVICE_URL)
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
 
         # Handle query parameters
         query_params = str(request.url.query) if request.url.query else ""
@@ -180,6 +206,11 @@ async def proxy_to_ai(path: str, request: Request, user=Depends(verify_token)):
             if key.lower() not in ["host", "authorization"]
         }
         headers["X-User-Id"] = user.get("user_id", "")
+        
+        # Add authentication for Cloud Run
+        auth_token = get_auth_token(AI_SERVICE_URL)
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
 
         # Handle query parameters
         query_params = str(request.url.query) if request.url.query else ""
