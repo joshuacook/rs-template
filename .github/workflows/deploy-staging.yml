@@ -80,6 +80,12 @@ jobs:
             --role="roles/storage.objectAdmin" \
             --condition=None || true
           
+          # Grant Firestore access
+          gcloud projects add-iam-policy-binding ${{ env.GCP_PROJECT_ID }} \
+            --member="serviceAccount:${API_SA_EMAIL}" \
+            --role="roles/datastore.user" \
+            --condition=None || true
+          
           # Grant service account token creator for signing
           gcloud iam service-accounts add-iam-policy-binding ${API_SA_EMAIL} \
             --member="serviceAccount:${API_SA_EMAIL}" \
