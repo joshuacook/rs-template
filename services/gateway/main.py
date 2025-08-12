@@ -5,6 +5,7 @@ import os
 import httpx
 from fastapi import FastAPI, Request, HTTPException, Depends, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from typing import Optional, Dict, Any
 import jwt
 from jwt import PyJWKClient
@@ -143,7 +144,9 @@ async def debug_env():
 )
 async def proxy_to_api(path: str, request: Request, user=Depends(verify_token)):
     """Proxy requests to API service"""
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    # Use longer timeout for file operations
+    timeout = httpx.Timeout(60.0, connect=10.0) if "file" in path else httpx.Timeout(30.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         # Prepare headers - remove host header and add user info
         headers = {
             key: value
@@ -164,7 +167,37 @@ async def proxy_to_api(path: str, request: Request, user=Depends(verify_token)):
         if query_params:
             url = f"{url}?{query_params}"
 
-        # Make the request
+        # Make the request (use stream for downloads)
+        if "download" in path:
+            # For downloads, use streaming
+            async with client.stream(
+                method=request.method,
+                url=url,
+                headers=headers,
+                content=await request.body()
+                if request.method in ["POST", "PUT", "PATCH"]
+                else None,
+            ) as response:
+                # Stream the response back
+                async def iterfile():
+                    async for chunk in response.aiter_bytes(chunk_size=8192):
+                        yield chunk
+                
+                # Get headers to forward
+                headers_to_forward = {
+                    key: value
+                    for key, value in response.headers.items()
+                    if key.lower() not in ["content-encoding", "content-length", "transfer-encoding", "connection"]
+                }
+                
+                return StreamingResponse(
+                    iterfile(),
+                    status_code=response.status_code,
+                    headers=headers_to_forward,
+                    media_type=response.headers.get("content-type", "application/octet-stream")
+                )
+        
+        # For non-downloads, use regular request
         response = await client.request(
             method=request.method,
             url=url,
@@ -176,19 +209,27 @@ async def proxy_to_api(path: str, request: Request, user=Depends(verify_token)):
 
         # Return appropriate response type
         content_type = response.headers.get("content-type", "")
+        
+        # Get headers to forward (exclude hop-by-hop headers)
+        headers_to_forward = {
+            key: value
+            for key, value in response.headers.items()
+            if key.lower() not in ["content-encoding", "content-length", "transfer-encoding", "connection"]
+        }
+        
         if "application/json" in content_type:
             return Response(
                 content=response.content,
                 status_code=response.status_code,
-                headers=dict(response.headers),
+                headers=headers_to_forward,
                 media_type="application/json",
             )
         else:
-            # For file downloads or other content types
+            # For other content types
             return Response(
                 content=response.content,
                 status_code=response.status_code,
-                headers=dict(response.headers),
+                headers=headers_to_forward,
                 media_type=content_type,
             )
 
@@ -228,11 +269,18 @@ async def proxy_to_ai(path: str, request: Request, user=Depends(verify_token)):
             else None,
         )
 
+        # Get headers to forward (exclude hop-by-hop headers)
+        headers_to_forward = {
+            key: value
+            for key, value in response.headers.items()
+            if key.lower() not in ["content-encoding", "content-length", "transfer-encoding", "connection"]
+        }
+        
         # Return response
         return Response(
             content=response.content,
             status_code=response.status_code,
-            headers=dict(response.headers),
+            headers=headers_to_forward,
             media_type=response.headers.get("content-type", "application/json"),
         )
 
