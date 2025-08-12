@@ -121,16 +121,16 @@ class TestEndToEndFlows:
             assert "file_id" in file_data
             file_id = file_data["file_id"]
 
-            # Get download URL
+            # Get download data
             download_response = upload_client.get(f"/api/files/{file_id}/download")
             assert download_response.status_code == 200
             download_data = download_response.json()
-            assert "download_url" in download_data
+            assert "file_content" in download_data
             
-            # Download the file using the pre-signed URL
-            actual_download = httpx.get(download_data["download_url"])
-            assert actual_download.status_code == 200
-            assert actual_download.content == file_content
+            # Decode the base64 content
+            import base64
+            decoded_content = base64.b64decode(download_data["file_content"])
+            assert decoded_content == file_content
 
             # Cleanup
             upload_client.delete(f"/api/files/{file_id}")
