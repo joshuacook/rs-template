@@ -6,3 +6,4 @@
 # Pre-signed URL fix - Tue Aug 12 13:08:39 PDT 2025
 # Fix pre-signed URL dependencies - Tue Aug 12 13:45:21 PDT 2025
 # Permissions granted - Tue Aug 12 14:16:42 PDT 2025
+# Fixed service account permissions - Tue Aug 12 14:55:22 PDT 2025
