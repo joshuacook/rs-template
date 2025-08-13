@@ -17,8 +17,8 @@ app = FastAPI(title="Gateway Service")
 # Configuration
 PROJECT_ID = os.getenv("GCP_PROJECT_ID", "PROJECT_NAME")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
-API_SERVICE_URL = os.getenv("API_BASE_URL", "http://localhost:8081")
-AI_SERVICE_URL = os.getenv("AI_BASE_URL", "http://localhost:8082")
+API_SERVICE_URL = os.getenv("API_SERVICE_URL", "http://localhost:8081")
+AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8082")
 CLERK_JWKS_URL = os.getenv(
     "CLERK_JWKS_URL",
     "https://clerk.PROJECT_NAME.radicalsymmetry.com/.well-known/jwks.json",
@@ -123,7 +123,12 @@ async def root():
 @app.get("/health")
 async def health():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "gateway"}
+    return {
+        "status": "healthy", 
+        "service": "gateway",
+        "version": os.getenv("VERSION", "1.0.0"),
+        "environment": ENVIRONMENT
+    }
 
 @app.get("/debug/env")
 async def debug_env():
