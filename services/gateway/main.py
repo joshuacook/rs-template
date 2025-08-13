@@ -17,8 +17,8 @@ app = FastAPI(title="Gateway Service")
 # Configuration
 PROJECT_ID = os.getenv("GCP_PROJECT_ID", "PROJECT_NAME")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
-API_SERVICE_URL = os.getenv("API_SERVICE_URL", "http://localhost:8081")
-AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8082")
+API_SERVICE_URL = os.getenv("API_BASE_URL", os.getenv("API_SERVICE_URL", "http://localhost:8081"))
+AI_SERVICE_URL = os.getenv("AI_BASE_URL", os.getenv("AI_SERVICE_URL", "http://localhost:8082"))
 CLERK_JWKS_URL = os.getenv(
     "CLERK_JWKS_URL",
     "https://clerk.PROJECT_NAME.radicalsymmetry.com/.well-known/jwks.json",
@@ -42,6 +42,14 @@ def get_auth_token(target_url: str) -> Optional[str]:
     except Exception as e:
         print(f"Failed to get auth token for {target_url}: {e}")
         return None
+
+# Log configuration on startup
+print(f"Gateway Service starting...")
+print(f"Environment: {ENVIRONMENT}")
+print(f"Project ID: {PROJECT_ID}")
+print(f"API Service URL: {API_SERVICE_URL}")
+print(f"AI Service URL: {AI_SERVICE_URL}")
+print(f"Is Cloud Run: {IS_CLOUD_RUN}")
 
 # CORS configuration
 app.add_middleware(
