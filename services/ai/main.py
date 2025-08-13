@@ -174,34 +174,8 @@ async def chat_completion(
                 }
             )
 
-        # Call the LLM with proper configuration
-        if MODEL_PROVIDER == "openai":
-            # OpenAI-specific configuration
-            response = await llm.ainvoke(
-                langchain_messages,
-                config={
-                    "max_tokens": max_tokens,
-                }
-            )
-        elif MODEL_PROVIDER == "anthropic":
-            # Anthropic-specific configuration
-            response = await llm.ainvoke(
-                langchain_messages,
-                config={
-                    "max_tokens": max_tokens,
-                }
-            )
-        elif MODEL_PROVIDER == "google":
-            # Google-specific configuration (Gemini models)
-            response = await llm.ainvoke(
-                langchain_messages,
-                config={
-                    "max_output_tokens": max_tokens,
-                }
-            )
-        else:
-            # This should never happen due to initialization checks
-            raise ValueError(f"Unsupported provider: {MODEL_PROVIDER}")
+        # Use LangChain's unified API - it handles provider differences automatically
+        response = await llm.ainvoke(langchain_messages)
 
         # Extract content from response
         response_content = response.content if hasattr(response, 'content') else str(response)
