@@ -7,17 +7,24 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
+  ActivityIndicator,
+  Image,
+  ActionSheetIOS,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { useApi } from '../contexts/ApiContext';
+import { UploadService } from '../services/uploadService';
 
 export default function HomeScreen() {
-  const { user } = useAuth();
-  const { get, post } = useApi();
+  const { user, token } = useAuth();
+  const { get, post, apiUrl } = useApi();
   const [refreshing, setRefreshing] = useState(false);
   const [healthStatus, setHealthStatus] = useState<any>(null);
   const [aiResponse, setAiResponse] = useState<string>('');
+  const [uploadedImage, setUploadedImage] = useState<any>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     checkHealth();
@@ -53,10 +60,75 @@ export default function HomeScreen() {
   };
 
   const testFileUpload = async () => {
-    Alert.alert(
-      'File Upload',
-      'File upload functionality would be implemented here with image picker integration.'
-    );
+    // Show action sheet to choose source
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Take Photo', 'Choose from Library'],
+          cancelButtonIndex: 0,
+        },
+        async (buttonIndex) => {
+          if (buttonIndex === 1) {
+            await handleImageCapture('camera');
+          } else if (buttonIndex === 2) {
+            await handleImageCapture('library');
+          }
+        }
+      );
+    } else {
+      // For Android, use Alert
+      Alert.alert(
+        'Select Image',
+        'Choose image source',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Take Photo', onPress: () => handleImageCapture('camera') },
+          { text: 'Choose from Library', onPress: () => handleImageCapture('library') },
+        ],
+        { cancelable: true }
+      );
+    }
+  };
+
+  const handleImageCapture = async (source: 'camera' | 'library') => {
+    try {
+      setIsUploading(true);
+      
+      // Pick or capture image
+      const image = source === 'camera' 
+        ? await UploadService.takePhoto()
+        : await UploadService.pickImageFromLibrary();
+      
+      if (!image) {
+        setIsUploading(false);
+        return;
+      }
+
+      // Upload image
+      const uploadResult = await UploadService.uploadImage(image, {
+        baseUrl: apiUrl,
+        token: token || '',
+      });
+
+      setUploadedImage({
+        ...uploadResult,
+        localUri: image.uri,
+      });
+
+      Alert.alert(
+        'Success',
+        `Image uploaded successfully!\nFile ID: ${uploadResult.file_id || uploadResult.id}`,
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      Alert.alert(
+        'Upload Failed',
+        error.message || 'Failed to upload image',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -96,8 +168,16 @@ export default function HomeScreen() {
             <Text style={styles.actionButtonText}>Test AI Service</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionButton} onPress={testFileUpload}>
-            <Text style={styles.actionButtonText}>Test File Upload</Text>
+          <TouchableOpacity 
+            style={[styles.actionButton, isUploading && styles.actionButtonDisabled]} 
+            onPress={testFileUpload}
+            disabled={isUploading}
+          >
+            {isUploading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.actionButtonText}>Upload Image</Text>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -105,6 +185,25 @@ export default function HomeScreen() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>AI Response</Text>
             <Text style={styles.aiText}>{aiResponse}</Text>
+          </View>
+        ) : null}
+
+        {uploadedImage ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Uploaded Image</Text>
+            <Image 
+              source={{ uri: uploadedImage.localUri }} 
+              style={styles.uploadedImage}
+              resizeMode="cover"
+            />
+            <Text style={styles.uploadedImageInfo}>
+              File ID: {uploadedImage.file_id || uploadedImage.id}
+            </Text>
+            {uploadedImage.size && (
+              <Text style={styles.uploadedImageInfo}>
+                Size: {(uploadedImage.size / 1024).toFixed(2)} KB
+              </Text>
+            )}
           </View>
         ) : null}
       </ScrollView>
@@ -177,5 +276,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
     lineHeight: 20,
+  },
+  actionButtonDisabled: {
+    opacity: 0.7,
+  },
+  uploadedImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  uploadedImageInfo: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
   },
 });
