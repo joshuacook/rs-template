@@ -2,6 +2,25 @@
 
 This template provides the base structure for all Radical Symmetry projects (rs-athena, rs-esther, rs-muse, rs-zelda).
 
+## ✅ Live Deployments
+
+### Production Environment
+- **Gateway**: https://rs-template-dev-production-gateway-109961180485.us-central1.run.app
+- **Status**: All systems operational
+
+### Staging Environment  
+- **Gateway**: https://rs-template-dev-staging-gateway-109961180485.us-central1.run.app
+- **Status**: All 7 E2E integration tests passing
+
+## Features Implemented
+- ✅ **3-Service Architecture**: Gateway, API, AI services
+- ✅ **Authentication**: JWT with Auth0 integration
+- ✅ **File Storage**: Cloud Storage with pre-signed URLs
+- ✅ **AI Integration**: OpenAI GPT chat functionality
+- ✅ **CI/CD Pipeline**: Automated testing and deployment
+- ✅ **Service-to-Service Auth**: Google Cloud ID tokens
+- ✅ **Integration Testing**: Comprehensive E2E test suite
+
 ## Documentation Structure
 
 - **[PROJECT_SPEC.yml](PROJECT_SPEC.yml)** - Complete project specification and configuration

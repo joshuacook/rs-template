@@ -11,7 +11,7 @@ repository:
       status: exists
       protected: false
     staging: 
-      status: not_created
+      status: exists
       protected: false
   
 gcp:
@@ -33,13 +33,21 @@ gcp:
           - rs-template-dev-production-gateway
           - rs-template-dev-production-api
           - rs-template-dev-production-ai
-        status: not_deployed
+        status: deployed
+        urls:
+          gateway: https://rs-template-dev-production-gateway-109961180485.us-central1.run.app
+          api: https://rs-template-dev-production-api-109961180485.us-central1.run.app
+          ai: https://rs-template-dev-production-ai-109961180485.us-central1.run.app
       staging:
         services:
           - rs-template-dev-staging-gateway
           - rs-template-dev-staging-api
           - rs-template-dev-staging-ai
-        status: pending_deployment
+        status: deployed
+        urls:
+          gateway: https://rs-template-dev-staging-gateway-109961180485.us-central1.run.app
+          api: https://rs-template-dev-staging-api-109961180485.us-central1.run.app
+          ai: https://rs-template-dev-staging-ai-109961180485.us-central1.run.app
   
   service_accounts:
     local_development:
@@ -56,11 +64,28 @@ gcp:
         - storage.admin
         - secretmanager.admin
         - artifactregistry.writer
+        - iam.serviceAccountAdmin
+        - resourcemanager.projectIamAdmin
+    api_service_staging:
+      email: api-service-staging@rs-template-dev.iam.gserviceaccount.com
+      status: created
+      permissions:
+        - editor (for all GCP resources)
+        - iam.serviceAccountTokenCreator (for pre-signed URLs)
+    api_service_production:
+      email: api-service-production@rs-template-dev.iam.gserviceaccount.com
+      status: created
+      permissions:
+        - editor (for all GCP resources)
+        - iam.serviceAccountTokenCreator (for pre-signed URLs)
   
-  storage_bucket:
-    name: rs-template-dev-uploads
-    status: created
-    shared_by: [production, staging]
+  storage_buckets:
+    production: 
+      name: rs-template-dev-uploads
+      status: created
+    staging:
+      name: rs-template-dev-uploads-staging  
+      status: created
 
 secrets:
   gcp_secret_manager:

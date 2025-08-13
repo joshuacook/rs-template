@@ -1,36 +1,40 @@
 """
-AI Service - AI/LLM operations with OpenAI and Langfuse tracing
+AI Service - AI/LLM operations with LangChain and Langfuse tracing
 """
 import os
 from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
-from openai import OpenAI
 from langfuse import Langfuse
-from langfuse.openai import openai as langfuse_openai
+
+# LangChain imports
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.schema import HumanMessage, SystemMessage
 
 app = FastAPI(title="AI Service")
 
 # Configuration
 PROJECT_ID = os.getenv("GCP_PROJECT_ID", "PROJECT_NAME")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+# Model configuration
+MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "")
+MODEL_NAME = os.getenv("MODEL_NAME", "")
+
+# Provider-specific API keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+
+# Langfuse configuration
 LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
 LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
 LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
 
-# Initialize clients
-openai_client = None
+# Initialize Langfuse client
 langfuse_client = None
-
-try:
-    if OPENAI_API_KEY:
-        openai_client = OpenAI(api_key=OPENAI_API_KEY)
-except Exception as e:
-    print(f"Warning: Could not initialize OpenAI client: {e}")
-    openai_client = None
-
 if LANGFUSE_SECRET_KEY and LANGFUSE_PUBLIC_KEY:
     try:
         langfuse_client = Langfuse(
@@ -38,11 +42,40 @@ if LANGFUSE_SECRET_KEY and LANGFUSE_PUBLIC_KEY:
             public_key=LANGFUSE_PUBLIC_KEY,
             host=LANGFUSE_HOST,
         )
-        # Patch OpenAI client for automatic tracing if both clients exist
-        if openai_client and langfuse_client:
-            langfuse_openai.register(openai_client, langfuse_client)
     except Exception as e:
         print(f"Warning: Could not initialize Langfuse: {e}")
+
+# Initialize LLM based on provider - fail loudly if misconfigured
+llm = None
+if not MODEL_PROVIDER or not MODEL_NAME:
+    raise ValueError("MODEL_PROVIDER and MODEL_NAME must be set")
+
+if MODEL_PROVIDER == "openai":
+    if not OPENAI_API_KEY:
+        raise ValueError("OPENAI_API_KEY required for OpenAI provider")
+    llm = ChatOpenAI(
+        model=MODEL_NAME,
+        api_key=OPENAI_API_KEY,
+        temperature=0.7,
+    )
+elif MODEL_PROVIDER == "anthropic":
+    if not ANTHROPIC_API_KEY:
+        raise ValueError("ANTHROPIC_API_KEY required for Anthropic provider")
+    llm = ChatAnthropic(
+        model=MODEL_NAME,
+        api_key=ANTHROPIC_API_KEY,
+        temperature=0.7,
+    )
+elif MODEL_PROVIDER == "google":
+    if not GOOGLE_API_KEY:
+        raise ValueError("GOOGLE_API_KEY required for Google provider")
+    llm = ChatGoogleGenerativeAI(
+        model=MODEL_NAME,
+        google_api_key=GOOGLE_API_KEY,
+        temperature=0.7,
+    )
+else:
+    raise ValueError(f"Unsupported MODEL_PROVIDER: {MODEL_PROVIDER}")
 
 # CORS configuration
 app.add_middleware(
@@ -69,7 +102,8 @@ async def root():
         "project": PROJECT_ID,
         "environment": ENVIRONMENT,
         "status": "healthy",
-        "model": OPENAI_MODEL,
+        "provider": MODEL_PROVIDER,
+        "model": MODEL_NAME,
     }
 
 
@@ -79,7 +113,8 @@ async def health():
     return {
         "status": "healthy",
         "service": "ai",
-        "openai": "configured" if openai_client else "not configured",
+        "provider": MODEL_PROVIDER,
+        "model": MODEL_NAME,
         "langfuse": "configured" if langfuse_client else "not configured",
     }
 
@@ -89,61 +124,128 @@ async def chat_completion(
     request: Request, user_id: str = Depends(get_user_from_headers)
 ):
     """Chat completion endpoint"""
-    if not openai_client:
-        raise HTTPException(status_code=503, detail="OpenAI client not configured")
+    if not llm:
+        raise HTTPException(status_code=503, detail="LLM not configured")
 
     data = await request.json()
     messages = data.get("messages", [])
-    # gpt-5 models use max_completion_tokens instead of max_tokens
     max_tokens = data.get("max_tokens", data.get("max_completion_tokens", 1000))
 
     if not messages:
         raise HTTPException(status_code=400, detail="Messages are required")
 
     try:
-        # Create trace in Langfuse
+        # Convert messages to LangChain format
+        langchain_messages = []
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            
+            if role == "system":
+                langchain_messages.append(SystemMessage(content=content))
+            elif role == "user":
+                langchain_messages.append(HumanMessage(content=content))
+            # For assistant messages, we'll treat them as human messages with context
+            # In production, you might want to handle this differently
+            else:
+                langchain_messages.append(HumanMessage(content=f"[Previous Assistant]: {content}"))
+
+        # Create Langfuse trace if available
         trace = None
         if langfuse_client:
             trace = langfuse_client.trace(
                 name="chat_completion",
                 user_id=user_id,
-                metadata={"project": PROJECT_ID, "environment": ENVIRONMENT},
+                metadata={
+                    "project": PROJECT_ID,
+                    "environment": ENVIRONMENT,
+                    "provider": MODEL_PROVIDER,
+                    "model": MODEL_NAME,
+                }
             )
 
-        # Call OpenAI (gpt-5 models use max_completion_tokens, not max_tokens or temperature)
-        response = openai_client.chat.completions.create(
-            model=OPENAI_MODEL, messages=messages, max_completion_tokens=max_tokens
-        )
+        # Call the LLM with proper configuration
+        if MODEL_PROVIDER == "openai":
+            # OpenAI-specific configuration
+            response = await llm.ainvoke(
+                langchain_messages,
+                config={
+                    "max_tokens": max_tokens,
+                }
+            )
+        elif MODEL_PROVIDER == "anthropic":
+            # Anthropic-specific configuration
+            response = await llm.ainvoke(
+                langchain_messages,
+                config={
+                    "max_tokens": max_tokens,
+                }
+            )
+        elif MODEL_PROVIDER == "google":
+            # Google-specific configuration (Gemini models)
+            response = await llm.ainvoke(
+                langchain_messages,
+                config={
+                    "max_output_tokens": max_tokens,
+                }
+            )
+        else:
+            # This should never happen due to initialization checks
+            raise ValueError(f"Unsupported provider: {MODEL_PROVIDER}")
 
-        # Log to Langfuse
+        # Extract content from response
+        response_content = response.content if hasattr(response, 'content') else str(response)
+        
+        # Calculate token usage (approximation for non-OpenAI providers)
+        # LangChain doesn't always provide token counts for all providers
+        usage = {
+            "prompt_tokens": sum(len(msg.content.split()) * 1.3 for msg in langchain_messages),  # Rough estimate
+            "completion_tokens": len(response_content.split()) * 1.3,  # Rough estimate
+            "total_tokens": 0
+        }
+        
+        # Try to get actual usage if available
+        if hasattr(response, 'response_metadata'):
+            metadata = response.response_metadata
+            if 'token_usage' in metadata:
+                usage = metadata['token_usage']
+            elif 'usage' in metadata:
+                usage = metadata['usage']
+        
+        usage["total_tokens"] = usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
+
+        # Log generation to Langfuse if available
         if trace:
             trace.generation(
                 name="chat_completion",
-                model=OPENAI_MODEL,
+                model=MODEL_NAME,
                 input=messages,
-                output=response.choices[0].message.content,
-                usage={
-                    "prompt_tokens": response.usage.prompt_tokens,
-                    "completion_tokens": response.usage.completion_tokens,
-                    "total_tokens": response.usage.total_tokens,
-                },
+                output=response_content,
+                usage=usage,
+                metadata={"provider": MODEL_PROVIDER}
             )
 
         return {
-            "response": response.choices[0].message.content,
-            "model": response.model,
-            "usage": {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
-            },
+            "response": response_content,
+            "model": MODEL_NAME,
+            "provider": MODEL_PROVIDER,
+            "usage": usage,
             "user_id": user_id,
         }
 
     except Exception as e:
-        # Log error to Langfuse
-        if trace:
-            trace.event(name="error", level="error", metadata={"error": str(e)})
+        # Log error to Langfuse if available
+        if langfuse_client:
+            langfuse_client.trace(
+                name="chat_completion_error",
+                user_id=user_id,
+                metadata={
+                    "error": str(e),
+                    "provider": MODEL_PROVIDER,
+                    "model": MODEL_NAME,
+                },
+                level="error"
+            )
         raise HTTPException(status_code=500, detail=str(e))
 
 

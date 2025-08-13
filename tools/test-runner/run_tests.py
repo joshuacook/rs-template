@@ -16,10 +16,14 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# Import our dependency aggregator
+from aggregate_deps import DependencyAggregator
+
 class TestRunner:
-    def __init__(self, environment: str = "local", verbose: bool = False):
+    def __init__(self, environment: str = "local", verbose: bool = False, update_deps: bool = False):
         self.environment = environment
         self.verbose = verbose
+        self.update_deps = update_deps
         self.project_id = os.getenv("GCP_PROJECT_ID", "PROJECT_NAME")
         # Try multiple token env var formats
         self.test_token = (
@@ -94,9 +98,16 @@ class TestRunner:
         env["TEST_TOKEN"] = self.test_token
         env["TEST_ENVIRONMENT"] = self.environment
         
-        # Run pytest
+        # Add service directory to Python path so imports work
+        service_dir = test_dir.parent.parent
+        if "PYTHONPATH" in env:
+            env["PYTHONPATH"] = f"{service_dir}:{env['PYTHONPATH']}"
+        else:
+            env["PYTHONPATH"] = str(service_dir)
+        
+        # Run pytest using UV (as per TESTING_PLAYBOOK)
         cmd = [
-            sys.executable, "-m", "pytest",
+            "uv", "run", "pytest",
             str(test_dir),
             "-v" if self.verbose else "-q",
             "--tb=short",
@@ -104,12 +115,14 @@ class TestRunner:
         ]
         
         try:
+            # Run from test-runner directory so UV uses our unified environment
+            test_runner_dir = Path(__file__).parent
             result = subprocess.run(
                 cmd,
                 env=env,
                 capture_output=True,
                 text=True,
-                cwd=str(test_dir.parent.parent)  # Run from service directory
+                cwd=str(test_runner_dir)
             )
             
             if result.returncode == 0:
@@ -138,10 +151,36 @@ class TestRunner:
             })
             return False
     
+    def ensure_dependencies(self) -> bool:
+        """Ensure all service dependencies are installed in test runner environment"""
+        try:
+            self.log("🔧 Checking and updating dependencies...")
+            aggregator = DependencyAggregator()
+            
+            # For now, we'll be conservative and only install if user explicitly requests
+            # In the future, we could add auto-detection of missing dependencies
+            success = aggregator.run(install=True)
+            
+            if success:
+                self.log("✅ Dependencies are up to date")
+            else:
+                self.log("❌ Failed to update dependencies", "ERROR")
+            
+            return success
+            
+        except Exception as e:
+            self.log(f"❌ Error updating dependencies: {e}", "ERROR")
+            return False
+    
     def run_all_tests(self) -> bool:
         """Run all integration tests"""
         self.log(f"\n🚀 Starting integration tests for environment: {self.environment}")
         self.log(f"Base URL: {self.base_url}")
+        
+        # Update dependencies if requested
+        if self.update_deps:
+            if not self.ensure_dependencies():
+                self.log("❌ Dependency update failed, continuing with existing environment...")
         
         # Check service health first
         if not self.check_service_health():
@@ -201,6 +240,11 @@ def main():
         choices=["gateway", "api", "ai"],
         help="Run tests for specific service only"
     )
+    parser.add_argument(
+        "--update-deps",
+        action="store_true",
+        help="Update dependencies from all services before running tests"
+    )
     
     args = parser.parse_args()
     
@@ -216,7 +260,7 @@ def main():
         sys.exit(1)
     
     # Run tests
-    runner = TestRunner(args.environment, args.verbose)
+    runner = TestRunner(args.environment, args.verbose, args.update_deps)
     
     if args.service:
         # Run specific service tests

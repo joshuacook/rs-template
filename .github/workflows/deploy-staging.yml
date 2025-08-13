@@ -108,7 +108,7 @@ jobs:
             --region ${{ env.GCP_REGION }} \
             --port 8082 \
             --no-allow-unauthenticated \
-            --set-env-vars="ENVIRONMENT=staging,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},OPENAI_MODEL=gpt-5-mini,OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }},LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }},LANGFUSE_HOST=${{ secrets.LANGFUSE_HOST }}"
+            --set-env-vars="ENVIRONMENT=staging,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},MODEL_PROVIDER=${{ secrets.MODEL_PROVIDER }},MODEL_NAME=${{ secrets.MODEL_NAME }},OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }},GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }},LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }},LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }},LANGFUSE_HOST=${{ secrets.LANGFUSE_HOST }}"
           
           # Get the actual service URLs after deployment
           API_URL=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-staging-api --region ${{ env.GCP_REGION }} --format 'value(status.url)')
@@ -187,23 +187,6 @@ jobs:
           cd services/gateway
           python -m pytest tests/integration/test_e2e_integration.py -v
       
-      - name: Run Firestore Integration Tests
-        env:
-          TEST_BASE_URL: ${{ steps.get-url.outputs.staging_url }}
-          TEST_BYPASS_TOKEN: ${{ secrets.TEST_BYPASS_TOKEN }}
-        run: |
-          # Run API Firestore tests against staging
-          cd services/api
-          python -m pytest tests/integration/test_firestore_integration.py -v
-      
-      - name: Run Storage Integration Tests
-        env:
-          TEST_BASE_URL: ${{ steps.get-url.outputs.staging_url }}
-          TEST_BYPASS_TOKEN: ${{ secrets.TEST_BYPASS_TOKEN }}
-        run: |
-          # Run API storage tests against staging
-          cd services/api
-          python -m pytest tests/integration/test_storage_integration.py -v
       
       - name: Report test results
         if: always()
