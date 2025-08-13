@@ -134,9 +134,11 @@ gcloud run domain-mappings describe {project_id}.staging.radicalsymmetry.com \
 
 ### Common Issues
 
+- **SSL handshake failures**: SSL certificates take 15+ minutes to provision for new domains
 - **503 errors**: Service not ready, wait for SSL provisioning
-- **DNS resolution failures**: Check DNS records and propagation
+- **DNS resolution failures**: Check DNS records and propagation  
 - **Permission errors**: Verify service account has Cloud Run Admin role
+- **First deployment timeout**: Initial domain mapping can take extra time - this is normal
 
 ## Environment Variables
 
