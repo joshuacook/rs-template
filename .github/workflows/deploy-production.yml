@@ -149,16 +149,29 @@ jobs:
             --role="roles/run.invoker" \
             --region=${{ env.GCP_REGION }}
       
+      - name: Map custom domain
+        run: |
+          # Map custom domain to gateway service
+          DOMAIN="${{ env.GCP_PROJECT_ID }}.production.radicalsymmetry.com"
+          
+          # Create domain mapping
+          gcloud run domain-mappings create \
+            --service ${{ env.GCP_PROJECT_ID }}-production-gateway \
+            --domain $DOMAIN \
+            --region ${{ env.GCP_REGION }} || echo "Domain mapping already exists"
+          
+          echo "Production available at: https://$DOMAIN"
+      
       - name: Verify deployment
         id: deployment
         run: |
           echo "Waiting for services to stabilize..."
           sleep 30
           
-          # Check Gateway health
-          GATEWAY_URL=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-production-gateway --region ${{ env.GCP_REGION }} --format 'value(status.url)')
+          # Check Gateway health using custom domain
+          DOMAIN="${{ env.GCP_PROJECT_ID }}.production.radicalsymmetry.com"
           
-          if curl -f $GATEWAY_URL/health; then
+          if curl -f https://$DOMAIN/health; then
             echo "✅ Gateway is healthy"
           else
             echo "❌ Gateway health check failed"

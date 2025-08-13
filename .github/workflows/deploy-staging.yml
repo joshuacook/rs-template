@@ -139,16 +139,28 @@ jobs:
             --member="serviceAccount:${GATEWAY_SA}" \
             --role="roles/run.invoker" \
             --region=${{ env.GCP_REGION }}
+      
+      - name: Map custom domain
+        run: |
+          # Map custom domain to gateway service
+          DOMAIN="${{ env.GCP_PROJECT_ID }}.staging.radicalsymmetry.com"
           
+          # Create domain mapping
+          gcloud run domain-mappings create \
+            --service ${{ env.GCP_PROJECT_ID }}-staging-gateway \
+            --domain $DOMAIN \
+            --region ${{ env.GCP_REGION }} || echo "Domain mapping already exists"
+          
+          echo "Staging available at: https://$DOMAIN"
       
       - name: Wait for services to be ready
         run: |
           echo "Waiting for services to stabilize..."
           sleep 30
           
-          # Check Gateway health
-          GATEWAY_URL=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-staging-gateway --region ${{ env.GCP_REGION }} --format 'value(status.url)')
-          curl -f $GATEWAY_URL/health || exit 1
+          # Check Gateway health using custom domain
+          DOMAIN="${{ env.GCP_PROJECT_ID }}.staging.radicalsymmetry.com"
+          curl -f https://$DOMAIN/health || exit 1
   
   integration-test:
     name: Run Integration Tests
@@ -171,11 +183,8 @@ jobs:
       - name: Get staging URL
         id: get-url
         run: |
-          # Authenticate to get the staging URL
-          echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}' | gcloud auth activate-service-account --key-file=-
-          gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
-          
-          STAGING_URL=$(gcloud run services describe ${{ secrets.GCP_PROJECT_ID }}-staging-gateway --region us-central1 --format 'value(status.url)')
+          # Use custom domain for staging
+          STAGING_URL="https://${{ secrets.GCP_PROJECT_ID }}.staging.radicalsymmetry.com"
           echo "staging_url=$STAGING_URL" >> $GITHUB_OUTPUT
       
       - name: Run E2E Integration Tests
