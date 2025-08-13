@@ -86,6 +86,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Log configuration on startup
+print(f"AI Service starting...")
+print(f"Environment: {ENVIRONMENT}")
+print(f"Model Provider: {MODEL_PROVIDER}")
+print(f"Model Name: {MODEL_NAME}")
+print(f"OpenAI API Key configured: {'Yes' if OPENAI_API_KEY else 'No'}")
+print(f"Anthropic API Key configured: {'Yes' if ANTHROPIC_API_KEY else 'No'}")
+print(f"Google API Key configured: {'Yes' if GOOGLE_API_KEY else 'No'}")
+print(f"Langfuse configured: {'Yes' if langfuse_client else 'No'}")
+
 
 def get_user_from_headers(x_user_id: Optional[str] = Header(None)) -> str:
     """Extract user ID from headers set by gateway"""
