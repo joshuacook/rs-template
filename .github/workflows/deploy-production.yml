@@ -113,7 +113,7 @@ jobs:
             --max-instances 1 \
             --cpu 1 \
             --memory 512Mi \
-            --set-env-vars="ENVIRONMENT=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},OPENAI_MODEL=gpt-5-mini,OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }},LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }},LANGFUSE_HOST=${{ secrets.LANGFUSE_HOST }}"
+            --set-env-vars="ENVIRONMENT=production,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},MODEL_PROVIDER=${{ secrets.MODEL_PROVIDER }},MODEL_NAME=${{ secrets.MODEL_NAME }},OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }},GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }},LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }},LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }},LANGFUSE_HOST=${{ secrets.LANGFUSE_HOST }}"
           
           # Get the actual service URLs after deployment
           API_URL=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-production-api --region ${{ env.GCP_REGION }} --format 'value(status.url)')
