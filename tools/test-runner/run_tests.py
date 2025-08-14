@@ -36,11 +36,11 @@ class TestRunner:
         if environment == "local":
             self.base_url = "http://localhost:8080"
         elif environment == "staging":
-            # Use custom domain for staging
-            self.base_url = f"https://{self.project_id}.staging.radicalsymmetry.com"
+            # Use Cloud Run URL directly
+            self.base_url = self._get_cloud_run_url("staging")
         elif environment == "production":
-            # Use custom domain for production
-            self.base_url = f"https://{self.project_id}.production.radicalsymmetry.com"
+            # Use Cloud Run URL directly
+            self.base_url = self._get_cloud_run_url("production")
         else:
             raise ValueError(f"Unknown environment: {environment}")
         
@@ -55,6 +55,27 @@ class TestRunner:
             "failed": [],
             "skipped": []
         }
+    
+    def _get_cloud_run_url(self, env: str) -> str:
+        """Get Cloud Run service URL using gcloud"""
+        try:
+            import subprocess
+            result = subprocess.run(
+                [
+                    "gcloud", "run", "services", "describe",
+                    f"{self.project_id}-{env}-gateway",
+                    "--region", "us-central1",
+                    "--format", "value(status.url)"
+                ],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+            else:
+                raise ValueError(f"Could not get Cloud Run URL for {env}: {result.stderr}")
+        except Exception as e:
+            raise ValueError(f"Failed to get Cloud Run URL: {e}")
     
     def log(self, message: str, level: str = "INFO"):
         """Log message with level"""

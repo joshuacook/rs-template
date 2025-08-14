@@ -145,37 +145,35 @@ jobs:
           # Map custom domain to gateway service
           DOMAIN="${{ env.GCP_PROJECT_ID }}.staging.radicalsymmetry.com"
           
-          # Create domain mapping
-          gcloud run domain-mappings create \
+          # Create domain mapping using beta command with region
+          gcloud beta run domain-mappings create \
             --service ${{ env.GCP_PROJECT_ID }}-staging-gateway \
             --domain $DOMAIN \
-            --region ${{ env.GCP_REGION }} || echo "Domain mapping already exists"
+            --region ${{ env.GCP_REGION }}
           
-          echo "Staging available at: https://$DOMAIN"
+          echo "Domain mapping created for: https://$DOMAIN"
       
-      - name: Wait for services to be ready
+      - name: Verify deployment
         run: |
-          echo "Waiting for services to stabilize and SSL certificate to provision..."
+          # Get the gateway service URL for immediate testing
+          GATEWAY_URL=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-staging-gateway \
+            --region ${{ env.GCP_REGION }} \
+            --format 'value(status.url)')
+          
+          echo "Cloud Run URL: $GATEWAY_URL"
+          echo "Custom domain: https://${{ env.GCP_PROJECT_ID }}.staging.radicalsymmetry.com (SSL may take 15+ minutes)"
+          
+          # Wait for services to stabilize
+          echo "Waiting for services to stabilize..."
           sleep 30
           
-          # Check Gateway health using custom domain
-          DOMAIN="${{ env.GCP_PROJECT_ID }}.staging.radicalsymmetry.com"
-          
-          # Try for up to 10 minutes for SSL to be ready
-          for i in {1..20}; do
-            echo "Attempt $i/20: Testing https://$DOMAIN/health"
-            if curl -f --max-time 30 https://$DOMAIN/health; then
-              echo "✅ Staging is ready!"
-              exit 0
-            fi
-            echo "SSL not ready yet, waiting 30 seconds..."
-            sleep 30
-          done
-          
-          echo "❌ SSL certificate not ready after 10 minutes"
-          echo "This is normal for new domains - SSL can take 15+ minutes to provision"
-          echo "The deployment succeeded, but automated tests will be skipped"
-          echo "Manual testing: Check https://$DOMAIN/health in a few minutes"
+          # Check Gateway health using Cloud Run URL (always works immediately)
+          if curl -f --max-time 30 $GATEWAY_URL/health; then
+            echo "✅ Staging is ready at $GATEWAY_URL!"
+          else
+            echo "❌ Gateway health check failed"
+            exit 1
+          fi
   
   integration-test:
     name: Run Integration Tests
@@ -198,8 +196,13 @@ jobs:
       - name: Get staging URL
         id: get-url
         run: |
-          # Use custom domain for staging
-          STAGING_URL="https://${{ secrets.GCP_PROJECT_ID }}.staging.radicalsymmetry.com"
+          # Get Cloud Run URL directly
+          echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}' | gcloud auth activate-service-account --key-file=-
+          gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
+          
+          STAGING_URL=$(gcloud run services describe ${{ secrets.GCP_PROJECT_ID }}-staging-gateway \
+            --region us-central1 \
+            --format 'value(status.url)')
           echo "staging_url=$STAGING_URL" >> $GITHUB_OUTPUT
       
       - name: Run E2E Integration Tests

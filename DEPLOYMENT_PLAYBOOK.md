@@ -68,33 +68,44 @@ gh secret set TEST_BYPASS_TOKEN --body "your-test-token"
 ### Manual Domain Mapping (if needed)
 
 ```bash
-# Staging
-gcloud run domain-mappings create \
+# Set project and region first
+gcloud config set project {project_id}
+gcloud config set run/region us-central1
+
+# Staging (using beta command for region support)
+gcloud beta run domain-mappings create \
   --service {project_id}-staging-gateway \
   --domain {project_id}.staging.radicalsymmetry.com \
   --region us-central1
 
-# Production  
-gcloud run domain-mappings create \
+# Production (using beta command for region support)
+gcloud beta run domain-mappings create \
   --service {project_id}-production-gateway \
   --domain {project_id}.production.radicalsymmetry.com \
   --region us-central1
 ```
 
+**Important:** Do NOT add error suppression like `|| echo "already exists"`. Let commands fail loudly so errors can be fixed.
+
 ### Check Domain Mappings
 
 ```bash
-# List all domain mappings
-gcloud run domain-mappings list --region us-central1
+# List all domain mappings (beta required)
+gcloud beta run domain-mappings list --region us-central1
 
-# Describe specific mapping
-gcloud run domain-mappings describe {project_id}.staging.radicalsymmetry.com --region us-central1
+# Describe specific mapping (beta required)
+gcloud beta run domain-mappings describe \
+  --domain {project_id}.staging.radicalsymmetry.com \
+  --region us-central1
 ```
 
 ### Remove Domain Mapping
 
 ```bash
-gcloud run domain-mappings delete {project_id}.staging.radicalsymmetry.com --region us-central1
+# Delete domain mapping (beta required)
+gcloud beta run domain-mappings delete \
+  --domain {project_id}.staging.radicalsymmetry.com \
+  --region us-central1
 ```
 
 ## Testing
