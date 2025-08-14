@@ -158,7 +158,8 @@ jobs:
           gcloud beta run domain-mappings create \
             --service ${{ env.GCP_PROJECT_ID }}-production-gateway \
             --domain $DOMAIN \
-            --region ${{ env.GCP_REGION }}
+            --region ${{ env.GCP_REGION }} \
+            --quiet
           
           echo "Domain mapping created for: https://$DOMAIN"
       

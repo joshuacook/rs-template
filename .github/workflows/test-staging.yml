@@ -1,0 +1,137 @@
+name: Test Staging Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      verbose:
+        description: 'Run tests in verbose mode'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      service:
+        description: 'Service to test (all, gateway, api, ai)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - 'all'
+          - 'gateway'
+          - 'api'
+          - 'ai'
+
+jobs:
+  comprehensive-staging-tests:
+    name: Run Comprehensive Tests Against Staging
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: 'latest'
+      
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+      
+      - name: Install test runner dependencies
+        run: |
+          # Install uv for dependency management
+          pip install uv
+          
+          # Set up test runner environment
+          cd tools/test-runner
+          uv venv
+          uv pip install -r requirements.txt
+      
+      - name: Run tests against staging
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          TEST_BYPASS_TOKEN: ${{ secrets.TEST_BYPASS_TOKEN }}
+        run: |
+          echo "🧪 Running tests against staging environment..."
+          echo "Service: ${{ github.event.inputs.service }}"
+          echo "Verbose: ${{ github.event.inputs.verbose }}"
+          echo ""
+          
+          cd tools/test-runner
+          
+          # Build command based on inputs
+          if [ "${{ github.event.inputs.service }}" == "all" ]; then
+            if [ "${{ github.event.inputs.verbose }}" == "true" ]; then
+              uv run python run_tests.py staging -v
+            else
+              uv run python run_tests.py staging
+            fi
+          else
+            if [ "${{ github.event.inputs.verbose }}" == "true" ]; then
+              uv run python run_tests.py staging -s ${{ github.event.inputs.service }} -v
+            else
+              uv run python run_tests.py staging -s ${{ github.event.inputs.service }}
+            fi
+          fi
+      
+      - name: Generate test report
+        if: always()
+        run: |
+          echo "## 📊 Test Results Summary"
+          echo ""
+          echo "### Configuration"
+          echo "- **Environment**: Staging"
+          echo "- **Service**: ${{ github.event.inputs.service }}"
+          echo "- **Verbose Mode**: ${{ github.event.inputs.verbose }}"
+          echo "- **Triggered By**: ${{ github.actor }}"
+          echo "- **Run ID**: ${{ github.run_id }}"
+          echo ""
+          
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "### ✅ Result: SUCCESS"
+            echo "All tests passed on staging environment"
+          else
+            echo "### ❌ Result: FAILURE"
+            echo "Tests failed on staging - check logs above for details"
+          fi
+          
+          echo ""
+          echo "### Next Steps"
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "1. Staging is working correctly"
+            echo "2. Safe to create PR to main for production deployment"
+          else
+            echo "1. Review the test failures above"
+            echo "2. Fix issues in staging branch"
+            echo "3. Re-run tests after fixes are deployed"
+          fi
+      
+      - name: Post results to summary
+        if: always()
+        run: |
+          {
+            echo "# Staging Test Results"
+            echo ""
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            echo "| Status | ${{ job.status }} |"
+            echo "| Service | ${{ github.event.inputs.service }} |"
+            echo "| Verbose | ${{ github.event.inputs.verbose }} |"
+            echo "| Triggered By | ${{ github.actor }} |"
+            echo "| Workflow Run | [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) |"
+            echo ""
+            if [ "${{ job.status }}" == "success" ]; then
+              echo "✅ **All tests passed successfully**"
+            else
+              echo "❌ **Tests failed - review logs for details**"
+            fi
+          } >> $GITHUB_STEP_SUMMARY

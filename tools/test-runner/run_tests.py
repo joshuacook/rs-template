@@ -36,11 +36,11 @@ class TestRunner:
         if environment == "local":
             self.base_url = "http://localhost:8080"
         elif environment == "staging":
-            # Use Cloud Run URL directly
-            self.base_url = self._get_cloud_run_url("staging")
+            # Use custom domain URL
+            self.base_url = f"https://{self.project_id}.staging.radicalsymmetry.com"
         elif environment == "production":
-            # Use Cloud Run URL directly
-            self.base_url = self._get_cloud_run_url("production")
+            # Use custom domain URL
+            self.base_url = f"https://{self.project_id}.production.radicalsymmetry.com"
         else:
             raise ValueError(f"Unknown environment: {environment}")
         
@@ -117,8 +117,8 @@ class TestRunner:
         # Set environment variables for tests
         env = os.environ.copy()
         env["TEST_BASE_URL"] = self.base_url
-        env["TEST_TOKEN"] = self.test_token
         env["TEST_ENVIRONMENT"] = self.environment
+        # Note: TEST_BYPASS_TOKEN is already in environment from load_dotenv()
         
         # Add service directory to Python path so imports work
         service_dir = test_dir.parent.parent
