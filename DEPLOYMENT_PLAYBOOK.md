@@ -274,28 +274,83 @@ gcloud domains list-user-verified
 gcloud domains verify radicalsymmetry.com  # if not already verified
 ```
 
-### Deployment Process
+### GitHub Actions Workflows
 
-#### Staging Deployment
+The project uses multiple GitHub Actions workflows for continuous integration and deployment:
 
-1. **Trigger**: Push to `staging` branch
-2. **Process**:
-   - Build and push Docker images to GCR
-   - Deploy services to Cloud Run
-   - Map custom domain to gateway service
-   - Run integration tests
-3. **URL**: `https://{project_id}.staging.radicalsymmetry.com`
+#### 1. **PR to Staging** (`pr-staging.yml`)
+- **Trigger**: Pull request to `staging` branch
+- **Purpose**: Ensure code quality before staging
+- **Checks**:
+  - Lint and format validation with `ruff`
+  - Code style consistency
+- **Required to pass**: Yes
 
-#### Production Deployment  
+#### 2. **Deploy to Staging** (`deploy-staging.yml`)  
+- **Trigger**: Push to `staging` branch (after PR merge)
+- **Purpose**: Deploy and test in staging environment
+- **Actions**:
+  1. Build Docker images for all services
+  2. Push to Google Container Registry
+  3. Deploy to Cloud Run staging
+  4. Create domain mapping
+  5. Run integration tests (gateway E2E tests)
+- **URL**: `https://{project_id}.staging.radicalsymmetry.com`
 
-1. **Trigger**: Push to `main` branch
-2. **Process**:
-   - Build and push Docker images to GCR
-   - Deploy services to Cloud Run with production settings
-   - Map custom domain to gateway service
-   - Verify deployment health
-   - Run smoke tests
-3. **URL**: `https://{project_id}.production.radicalsymmetry.com`
+#### 3. **PR to Main** (`pr-main.yml`)
+- **Trigger**: Pull request to `main` branch
+- **Purpose**: Validate production readiness
+- **Checks**:
+  1. **Production Readiness**: No hardcoded secrets, required files present
+  2. **Staging Verification**: Ensures staging branch is merged
+  3. **Comprehensive Staging Tests**: Runs full test suite against live staging (Gateway, API, AI)
+  4. **Production Approval**: Summary report
+- **Required to pass**: Yes - blocks merge if any check fails
+
+#### 4. **Deploy to Production** (`deploy-production.yml`)
+- **Trigger**: Push to `main` branch (after PR merge)
+- **Purpose**: Deploy to production environment
+- **Actions**:
+  1. Build and push Docker images
+  2. Deploy to Cloud Run production
+  3. Create domain mapping
+  4. Run smoke tests (basic health checks)
+  5. Tag deployment in Git
+  6. Send deployment notification
+- **URL**: `https://{project_id}.production.radicalsymmetry.com`
+
+#### 5. **GCP Access Test** (`gcp-access-test.yml`)
+- **Trigger**: Manual or scheduled
+- **Purpose**: Validate GCP service account permissions
+- **Use**: Troubleshooting deployment issues
+
+### Recommended Deployment Flow
+
+```
+1. Create feature branch from staging
+   ↓
+2. Develop and test locally
+   ↓
+3. Create PR to staging → Triggers pr-staging.yml (lint checks)
+   ↓
+4. Merge to staging → Triggers deploy-staging.yml
+   ↓
+5. Verify staging deployment works
+   ↓
+6. Create PR from staging to main → Triggers pr-main.yml (comprehensive tests)
+   ↓
+7. Merge to main → Triggers deploy-production.yml
+   ↓
+8. Production is live
+```
+
+### Key Safety Features
+
+- **No direct push to main**: Must go through staging first
+- **Comprehensive testing**: PR to main runs full test suite against staging
+- **Automated checks**: No hardcoded secrets, proper configuration
+- **Staged rollout**: Test on staging before production
+- **Rollback capability**: Git tags on each production deployment
 
 ### Domain Mapping Commands
 
