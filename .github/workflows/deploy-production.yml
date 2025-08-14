@@ -154,6 +154,9 @@ jobs:
           # Map custom domain to gateway service
           DOMAIN="${{ env.GCP_PROJECT_ID }}.production.radicalsymmetry.com"
           
+          # Disable prompts for gcloud component updates
+          gcloud config set core/disable_prompts true
+          
           # Create domain mapping using beta command with region
           gcloud beta run domain-mappings create \
             --service ${{ env.GCP_PROJECT_ID }}-production-gateway \
