@@ -8,7 +8,7 @@ import httpx
 
 # Get test configuration from environment
 BASE_URL = os.getenv("TEST_BASE_URL", "http://localhost:8080")
-TEST_TOKEN = os.getenv("TEST_TOKEN", "")
+TEST_TOKEN = os.getenv("TEST_BYPASS_TOKEN", "")
 ENVIRONMENT = os.getenv("TEST_ENVIRONMENT", "local")
 
 

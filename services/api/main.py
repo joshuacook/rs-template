@@ -283,9 +283,11 @@ async def download_file(file_id: str, user: Dict = Depends(get_user_from_headers
         _, service_account_email = google.auth.default()
         
         # Create impersonated credentials for signing
+        # Use environment-specific service account
+        env_suffix = "staging" if ENVIRONMENT == "staging" else "production"
         signing_credentials = impersonated_credentials.Credentials(
             source_credentials=credentials,
-            target_principal=f"api-service-staging@{PROJECT_ID}.iam.gserviceaccount.com",
+            target_principal=f"api-service-{env_suffix}@{PROJECT_ID}.iam.gserviceaccount.com",
             target_scopes=["https://www.googleapis.com/auth/devstorage.read_only"],
             lifetime=3600,
         )

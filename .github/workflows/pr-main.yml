@@ -160,10 +160,79 @@ jobs:
           
           echo "✅ Staging deployment configuration found"
   
+  comprehensive-staging-tests:
+    name: Run Comprehensive Tests Against Staging
+    runs-on: ubuntu-latest
+    needs: [production-readiness, staging-verification]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: 'latest'
+      
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+      
+      - name: Install test runner dependencies
+        run: |
+          # Install uv for dependency management
+          pip install uv
+          
+          # Set up test runner environment
+          cd tools/test-runner
+          uv venv
+          uv pip install -r requirements.txt
+      
+      - name: Run comprehensive tests against staging
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          TEST_BYPASS_TOKEN: ${{ secrets.TEST_BYPASS_TOKEN }}
+        run: |
+          echo "🧪 Running comprehensive tests against staging environment..."
+          cd tools/test-runner
+          
+          # Run all tests against staging
+          uv run python run_tests.py staging -v
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ All staging tests passed!"
+          else
+            echo "❌ Staging tests failed - this PR cannot be merged to production"
+            exit 1
+          fi
+      
+      - name: Generate test report
+        if: always()
+        run: |
+          echo "## Test Results Summary"
+          echo ""
+          echo "- Environment: Staging"
+          echo "- Test Suite: Comprehensive (Gateway, API, AI)"
+          echo "- Status: ${{ job.status }}"
+          echo ""
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ All services tested successfully on staging"
+            echo "This PR is ready for production deployment"
+          else
+            echo "❌ Tests failed on staging"
+            echo "Please fix the issues before merging to production"
+          fi
+  
   approve-for-production:
     name: Production Approval
     runs-on: ubuntu-latest
-    needs: [production-readiness, staging-verification]
+    needs: [production-readiness, staging-verification, comprehensive-staging-tests]
     
     steps:
       - name: Generate deployment summary
@@ -179,6 +248,7 @@ jobs:
           echo "- ✅ Production configuration verified"
           echo "- ✅ Staging branch is merged"
           echo "- ✅ Health check endpoints present"
+          echo "- ✅ Comprehensive staging tests passed (Gateway, API, AI)"
           echo ""
           echo "### Services Ready for Deployment:"
           echo "- Gateway Service"

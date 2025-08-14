@@ -9,8 +9,8 @@ import uuid
 from datetime import datetime
 
 # Get test configuration from environment
-BASE_URL = os.getenv("TEST_BASE_URL", "http://localhost:8081")
-TEST_TOKEN = os.getenv("TEST_TOKEN", "")
+BASE_URL = os.getenv("TEST_BASE_URL", "http://localhost:8080")  # Gateway URL
+TEST_TOKEN = os.getenv("TEST_BYPASS_TOKEN", "")
 ENVIRONMENT = os.getenv("TEST_ENVIRONMENT", "local")
 
 
@@ -18,9 +18,10 @@ ENVIRONMENT = os.getenv("TEST_ENVIRONMENT", "local")
 def client():
     """Create HTTP client with auth headers"""
     headers = {
-        "X-User-Id": "test_user_" + str(uuid.uuid4())[:8],
-        "X-User-Email": "test@example.com",
+        "Authorization": f"Bearer {TEST_TOKEN}",
+        "Content-Type": "application/json",
     }
+    # For API tests, we need to go through the gateway with /api prefix
     with httpx.Client(base_url=BASE_URL, headers=headers, timeout=30.0) as client:
         yield client
 
@@ -40,7 +41,7 @@ class TestFirestoreIntegration:
 
     def test_create_item(self, client, test_item):
         """Test creating an item in Firestore"""
-        response = client.post("/items", json=test_item)
+        response = client.post("/api/items", json=test_item)
         assert response.status_code == 200
 
         data = response.json()
@@ -55,12 +56,12 @@ class TestFirestoreIntegration:
     def test_read_item(self, client, test_item):
         """Test reading an item from Firestore"""
         # First create an item
-        create_response = client.post("/items", json=test_item)
+        create_response = client.post("/api/items", json=test_item)
         assert create_response.status_code == 200
         item_id = create_response.json()["id"]
 
         # Now read it back
-        read_response = client.get(f"/items/{item_id}")
+        read_response = client.get(f"/api/items/{item_id}")
         assert read_response.status_code == 200
 
         data = read_response.json()
@@ -69,12 +70,12 @@ class TestFirestoreIntegration:
         assert data["description"] == test_item["description"]
 
         # Cleanup
-        client.delete(f"/items/{item_id}")
+        client.delete(f"/api/items/{item_id}")
 
     def test_update_item(self, client, test_item):
         """Test updating an item in Firestore"""
         # Create an item
-        create_response = client.post("/items", json=test_item)
+        create_response = client.post("/api/items", json=test_item)
         assert create_response.status_code == 200
         item_id = create_response.json()["id"]
 
@@ -83,32 +84,32 @@ class TestFirestoreIntegration:
             "name": "Updated Item Name",
             "description": "Updated description",
         }
-        update_response = client.put(f"/items/{item_id}", json=updated_data)
+        update_response = client.put(f"/api/items/{item_id}", json=updated_data)
         assert update_response.status_code == 200
 
         # Verify the update
-        read_response = client.get(f"/items/{item_id}")
+        read_response = client.get(f"/api/items/{item_id}")
         assert read_response.status_code == 200
         data = read_response.json()
         assert data["name"] == updated_data["name"]
         assert data["description"] == updated_data["description"]
 
         # Cleanup
-        client.delete(f"/items/{item_id}")
+        client.delete(f"/api/items/{item_id}")
 
     def test_delete_item(self, client, test_item):
         """Test deleting an item from Firestore"""
         # Create an item
-        create_response = client.post("/items", json=test_item)
+        create_response = client.post("/api/items", json=test_item)
         assert create_response.status_code == 200
         item_id = create_response.json()["id"]
 
         # Delete it
-        delete_response = client.delete(f"/items/{item_id}")
+        delete_response = client.delete(f"/api/items/{item_id}")
         assert delete_response.status_code == 200
 
         # Verify it's gone
-        read_response = client.get(f"/items/{item_id}")
+        read_response = client.get(f"/api/items/{item_id}")
         assert read_response.status_code == 404
 
     def test_list_items(self, client, test_item):
@@ -117,12 +118,12 @@ class TestFirestoreIntegration:
         item_ids = []
         for i in range(3):
             test_item["name"] = f"List Test Item {i}"
-            response = client.post("/items", json=test_item)
+            response = client.post("/api/items", json=test_item)
             assert response.status_code == 200
             item_ids.append(response.json()["id"])
 
         # List items
-        list_response = client.get("/items")
+        list_response = client.get("/api/items")
         assert list_response.status_code == 200
 
         data = list_response.json()
@@ -131,7 +132,7 @@ class TestFirestoreIntegration:
 
         # Cleanup
         for item_id in item_ids:
-            client.delete(f"/items/{item_id}")
+            client.delete(f"/api/items/{item_id}")
 
     def test_list_items_with_pagination(self, client, test_item):
         """Test pagination when listing items"""
@@ -139,19 +140,19 @@ class TestFirestoreIntegration:
         item_ids = []
         for i in range(5):
             test_item["name"] = f"Pagination Test Item {i}"
-            response = client.post("/items", json=test_item)
+            response = client.post("/api/items", json=test_item)
             assert response.status_code == 200
             item_ids.append(response.json()["id"])
 
         # Get first page
-        response = client.get("/items?limit=2")
+        response = client.get("/api/items?limit=2")
         assert response.status_code == 200
         data = response.json()
         assert len(data["items"]) <= 2
 
         # Cleanup
         for item_id in item_ids:
-            client.delete(f"/items/{item_id}")
+            client.delete(f"/api/items/{item_id}")
 
 
 @pytest.mark.skipif(
@@ -163,7 +164,7 @@ class TestFirestoreCleanup:
     def test_cleanup_test_items(self, client):
         """Clean up any leftover test items"""
         # List all items
-        response = client.get("/items?limit=100")
+        response = client.get("/api/items?limit=100")
         if response.status_code == 200:
             data = response.json()
             for item in data.get("items", []):
@@ -173,4 +174,4 @@ class TestFirestoreCleanup:
                     or item.get("name", "").startswith("List Test Item")
                     or item.get("name", "").startswith("Pagination Test Item")
                 ):
-                    client.delete(f"/items/{item['id']}")
+                    client.delete(f"/api/items/{item['id']}")

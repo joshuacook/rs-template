@@ -154,25 +154,44 @@ jobs:
           # Map custom domain to gateway service
           DOMAIN="${{ env.GCP_PROJECT_ID }}.production.radicalsymmetry.com"
           
-          # Create domain mapping
-          gcloud run domain-mappings create \
-            --service ${{ env.GCP_PROJECT_ID }}-production-gateway \
-            --domain $DOMAIN \
-            --region ${{ env.GCP_REGION }} || echo "Domain mapping already exists"
+          # Disable prompts for gcloud component updates
+          gcloud config set core/disable_prompts true
           
-          echo "Production available at: https://$DOMAIN"
+          # Check if domain mapping already exists
+          if gcloud beta run domain-mappings describe \
+            --domain $DOMAIN \
+            --region ${{ env.GCP_REGION }} \
+            --format="value(metadata.name)" 2>/dev/null; then
+            echo "Domain mapping already exists for: https://$DOMAIN"
+          else
+            # Create domain mapping using beta command with region
+            gcloud beta run domain-mappings create \
+              --service ${{ env.GCP_PROJECT_ID }}-production-gateway \
+              --domain $DOMAIN \
+              --region ${{ env.GCP_REGION }} \
+              --quiet
+            
+            echo "Domain mapping created for: https://$DOMAIN"
+          fi
       
       - name: Verify deployment
         id: deployment
         run: |
+          # Get the gateway service URL for immediate testing
+          GATEWAY_URL=$(gcloud run services describe ${{ env.GCP_PROJECT_ID }}-production-gateway \
+            --region ${{ env.GCP_REGION }} \
+            --format 'value(status.url)')
+          
+          echo "Cloud Run URL: $GATEWAY_URL"
+          echo "Custom domain: https://${{ env.GCP_PROJECT_ID }}.production.radicalsymmetry.com (SSL may take 15+ minutes)"
+          
+          # Wait for services to stabilize
           echo "Waiting for services to stabilize..."
           sleep 30
           
-          # Check Gateway health using custom domain
-          DOMAIN="${{ env.GCP_PROJECT_ID }}.production.radicalsymmetry.com"
-          
-          if curl -f https://$DOMAIN/health; then
-            echo "✅ Gateway is healthy"
+          # Check Gateway health using Cloud Run URL (always works immediately)
+          if curl -f $GATEWAY_URL/health; then
+            echo "✅ Gateway is healthy at $GATEWAY_URL"
           else
             echo "❌ Gateway health check failed"
             exit 1
