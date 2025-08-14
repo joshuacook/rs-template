@@ -148,13 +148,21 @@ jobs:
           # Disable prompts for gcloud component updates
           gcloud config set core/disable_prompts true
           
-          # Create domain mapping using beta command with region
-          gcloud beta run domain-mappings create \
-            --service ${{ env.GCP_PROJECT_ID }}-staging-gateway \
+          # Check if domain mapping already exists
+          if gcloud beta run domain-mappings describe \
             --domain $DOMAIN \
-            --region ${{ env.GCP_REGION }}
-          
-          echo "Domain mapping created for: https://$DOMAIN"
+            --region ${{ env.GCP_REGION }} \
+            --format="value(metadata.name)" 2>/dev/null; then
+            echo "Domain mapping already exists for: https://$DOMAIN"
+          else
+            # Create domain mapping using beta command with region
+            gcloud beta run domain-mappings create \
+              --service ${{ env.GCP_PROJECT_ID }}-staging-gateway \
+              --domain $DOMAIN \
+              --region ${{ env.GCP_REGION }}
+            
+            echo "Domain mapping created for: https://$DOMAIN"
+          fi
       
       - name: Verify deployment
         run: |
